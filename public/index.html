@@ -290,7 +290,7 @@ const db = firebase.firestore();
 const CLINIC_COLLECTION = 'clinicData'; // Firestore collection 名稱
 
 /* ============ STATE ============ */
-const ADMIN_PIN = "0000"; // 展示用簡易密碼，正式上線請改為真實後端驗證機制
+const ADMIN_PIN = "hapi719"; // 展示用簡易密碼，正式上線請改為真實後端驗證機制
 
 let slots = [];
 let waitlist = [];
@@ -325,8 +325,15 @@ let state = {
 };
 
 /* ============ HELPERS ============ */
-function todayStr(){ return new Date().toISOString().slice(0,10); }
-function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+90); return d.toISOString().slice(0,10); }
+// 以「本地時區」組出 YYYY-MM-DD，避免 toISOString() 轉成UTC造成日期偏移一天的問題
+function toLocalISODate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function todayStr(){ return toLocalISODate(new Date()); }
+function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+90); return toLocalISODate(d); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
@@ -424,7 +431,7 @@ function ensureTemplateSlots(){
     const dow = d.getDay();
     const matches = SLOT_TEMPLATE.filter(t=>t.dow===dow);
     if(matches.length===0) continue;
-    const dateStr = d.toISOString().slice(0,10);
+    const dateStr = toLocalISODate(d);
     matches.forEach(t=>{
       const key = dateStr+'|'+t.time;
       if(cancelledOcc.includes(key)) return;
