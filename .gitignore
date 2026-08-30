@@ -1,0 +1,16 @@
+# 系統/編輯器產生的檔案
+.DS_Store
+Thumbs.db
+*.log
+
+# Firebase CLI 快取
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Vercel CLI 快取
+.vercel/
+
+# Node（若之後有加開發工具）
+node_modules/

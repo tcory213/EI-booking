@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>EI Booking｜家歡診所兒童早療暨門診評估預約表</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<!-- Firebase (compat SDK，方便以純 <script> 標籤使用) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --tiffany:#0ABAB5;
+    --tiffany-dark:#078883;
+    --tiffany-deep:#056560;
+    --tiffany-light:#E3F7F6;
+    --tiffany-pale:#F3FBFA;
+    --ink:#1F2E2D;
+    --ink-soft:#5C716F;
+    --ink-faint:#8FA3A1;
+    --coral:#FF8F72;
+    --coral-dark:#E96F50;
+    --gold:#FFC24B;
+    --white:#FFFFFF;
+    --danger:#E24C3C;
+    --border:#D6EEEC;
+    --shadow: 0 8px 24px rgba(6,90,86,0.10);
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:linear-gradient(180deg,var(--tiffany-pale) 0%, #FFFFFF 340px);
+    font-family:'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+    color:var(--ink);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app-shell{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    background:transparent;
+    position:relative;
+    padding-bottom:40px;
+  }
+  /* HEADER */
+  .header{
+    background:linear-gradient(135deg, var(--tiffany) 0%, var(--tiffany-dark) 100%);
+    padding:22px 20px 26px;
+    border-radius:0 0 28px 28px;
+    box-shadow:var(--shadow);
+    position:relative;
+    color:#fff;
+  }
+  .header-top{display:flex; justify-content:space-between; align-items:flex-start;}
+  .clinic-name{
+    font-family:'Baloo 2', 'Noto Sans TC', sans-serif;
+    font-weight:800;
+    font-size:15px;
+    letter-spacing:2px;
+    opacity:0.92;
+    text-transform:uppercase;
+  }
+  .title{
+    font-weight:900;
+    font-size:21px;
+    line-height:1.5;
+    margin-top:6px;
+    max-width:300px;
+  }
+  .gear-btn{
+    background:rgba(255,255,255,0.18);
+    border:none;
+    color:#fff;
+    width:38px;height:38px;
+    border-radius:12px;
+    font-size:18px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .gear-btn:active{background:rgba(255,255,255,0.32);}
+  .footprints{
+    display:flex; align-items:center; gap:6px; margin-top:18px;
+  }
+  .fp-step{display:flex; align-items:center; gap:6px; flex:1;}
+  .fp-icon{
+    width:30px;height:30px;border-radius:50%;
+    background:rgba(255,255,255,0.22);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Baloo 2',sans-serif; font-weight:700; font-size:13px;
+    color:#fff; flex-shrink:0;
+    transition:all .25s;
+  }
+  .fp-step.active .fp-icon{background:#fff; color:var(--tiffany-dark);}
+  .fp-label{font-size:11px; color:rgba(255,255,255,0.75); white-space:nowrap;}
+  .fp-step.active .fp-label{color:#fff; font-weight:700;}
+  .fp-line{flex:1; height:2px; background:rgba(255,255,255,0.25); border-radius:2px;}
+  .fp-line.active{background:#fff;}
+
+  /* MAIN CONTENT */
+  .content{padding:18px 16px 8px;}
+  .card{
+    background:#fff;
+    border-radius:var(--radius);
+    padding:18px;
+    box-shadow:var(--shadow);
+    margin-bottom:16px;
+    border:1px solid var(--border);
+  }
+  .notice-card{
+    background:var(--tiffany-light);
+    border:1px solid #BDEAE7;
+    border-radius:var(--radius);
+    padding:16px 18px;
+    margin-bottom:16px;
+  }
+  .notice-card h3{
+    margin:0 0 8px; font-size:14px; color:var(--tiffany-deep); font-weight:900;
+    display:flex; align-items:center; gap:6px;
+  }
+  .notice-card ol{margin:0; padding-left:18px; font-size:13.5px; line-height:1.75; color:var(--ink);}
+  .notice-card li{margin-bottom:4px;}
+  .notice-card li:last-child{margin-bottom:0;}
+  .notice-item{margin-bottom:12px;}
+  .notice-item:last-of-type{margin-bottom:0;}
+  .notice-item b{display:block; font-weight:700; font-size:13.5px; color:var(--ink); line-height:1.6; margin-bottom:3px;}
+  .notice-sub{font-size:12.5px; color:var(--ink-soft); line-height:1.7;}
+  .notice-thanks{margin-top:12px; padding-top:10px; border-top:1px dashed #BDEAE7; font-size:12.5px; color:var(--tiffany-deep); font-weight:700; line-height:1.7;}
+  .link-btn{background:none; border:none; color:var(--tiffany-deep); font-size:12.5px; font-weight:700; cursor:pointer; padding:4px 0; font-family:inherit;}
+
+  label.field-label{
+    display:block; font-size:13px; font-weight:700; color:var(--ink); margin-bottom:6px; margin-top:16px;
+  }
+  label.field-label:first-child{margin-top:0;}
+  .req{color:var(--coral-dark); font-weight:700;}
+  input[type=text], input[type=tel], input[type=date], textarea, select{
+    width:100%; padding:12px 14px; font-size:16px; border-radius:12px;
+    border:1.5px solid var(--border); background:#FAFEFE; color:var(--ink);
+    font-family:inherit;
+  }
+  input:focus, textarea:focus, select:focus{outline:none; border-color:var(--tiffany);}
+  textarea{resize:vertical; min-height:72px;}
+  .age-hint{
+    margin-top:6px; font-size:12.5px; color:var(--tiffany-dark); font-weight:700;
+    display:none;
+  }
+  .age-warning{
+    margin-top:8px; padding:10px 12px; border-radius:12px; background:#FFF1EE; border:1px solid #F3C2BA;
+    color:var(--danger); font-size:12.5px; font-weight:700; line-height:1.7;
+    display:none;
+  }
+  .prior-options{display:flex; gap:8px; margin-top:2px;}
+  .prior-opt{
+    flex:1; text-align:center; padding:11px 4px; border-radius:12px; border:1.5px solid var(--border);
+    font-size:13px; font-weight:700; color:var(--ink-soft); cursor:pointer; background:#FAFEFE;
+  }
+  .prior-opt.selected{background:var(--tiffany); border-color:var(--tiffany); color:#fff;}
+
+  .btn{
+    display:block; width:100%; text-align:center; padding:15px; border-radius:14px;
+    font-size:16px; font-weight:800; border:none; cursor:pointer; font-family:inherit;
+    margin-top:18px;
+  }
+  .btn-primary{background:var(--tiffany); color:#fff; box-shadow:0 6px 16px rgba(10,186,181,0.35);}
+  .btn-primary:active{background:var(--tiffany-dark);}
+  .btn-primary:disabled{background:#BFDAD8; box-shadow:none; cursor:not-allowed;}
+  .btn-secondary{background:#fff; color:var(--tiffany-dark); border:1.5px solid var(--tiffany);}
+  .btn-ghost{background:transparent; color:var(--ink-soft); font-weight:600; margin-top:10px;}
+  .btn-danger{background:#fff; color:var(--danger); border:1.5px solid #F3C2BA;}
+  .btn-small{padding:9px 14px; font-size:13px; margin-top:0; width:auto; border-radius:10px;}
+
+  .summary-chip{
+    display:flex; align-items:center; gap:10px; background:var(--tiffany-light);
+    border-radius:14px; padding:12px 14px; margin-bottom:16px;
+  }
+  .summary-chip .avatar{
+    width:38px;height:38px;border-radius:50%;background:var(--tiffany); color:#fff;
+    display:flex;align-items:center;justify-content:center; font-weight:800; font-family:'Baloo 2',sans-serif; flex-shrink:0;
+  }
+  .summary-chip .sname{font-weight:800; font-size:14.5px;}
+  .summary-chip .sage{font-size:12px; color:var(--ink-soft);}
+
+  .date-scroll{display:flex; gap:8px; overflow-x:auto; padding:2px 2px 10px; -webkit-overflow-scrolling:touch;}
+  .date-chip{
+    flex-shrink:0; min-width:62px; padding:10px 8px; border-radius:14px; border:1.5px solid var(--border);
+    text-align:center; cursor:pointer; background:#fff;
+  }
+  .date-chip .dow{font-size:11px; color:var(--ink-faint); font-weight:700;}
+  .date-chip .dnum{font-family:'Baloo 2',sans-serif; font-size:18px; font-weight:800; color:var(--ink); margin-top:2px;}
+  .date-chip.selected{background:var(--tiffany); border-color:var(--tiffany);}
+  .date-chip.selected .dow, .date-chip.selected .dnum{color:#fff;}
+
+  .time-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:6px;}
+  .time-btn{
+    padding:12px 4px; border-radius:12px; border:1.5px solid var(--border); background:#fff;
+    text-align:center; font-weight:700; font-size:14.5px; cursor:pointer; color:var(--ink);
+    font-family:'Baloo 2',sans-serif;
+  }
+  .time-btn.selected{background:var(--coral); border-color:var(--coral); color:#fff;}
+  .time-note{font-size:11px; color:var(--ink-faint); margin-top:3px; font-family:'Noto Sans TC';}
+
+  .empty-state{text-align:center; padding:30px 10px; color:var(--ink-soft);}
+  .empty-state .emoji{font-size:36px; margin-bottom:8px;}
+
+  .confirm-box{text-align:center; padding:10px 4px 4px;}
+  .confirm-box .check-circle{
+    width:64px;height:64px; border-radius:50%; background:var(--tiffany-light); color:var(--tiffany-dark);
+    display:flex;align-items:center;justify-content:center; font-size:32px; margin:0 auto 14px;
+  }
+  .confirm-box h2{font-size:18px; margin:0 0 6px;}
+  .confirm-box p{font-size:13.5px; color:var(--ink-soft); margin:0 0 16px; line-height:1.6;}
+  .detail-row{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px dashed var(--border); font-size:13.5px;}
+  .detail-row:last-child{border-bottom:none;}
+  .detail-row .k{color:var(--ink-soft);}
+  .detail-row .v{font-weight:700; text-align:right;}
+
+  .badge{display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:800;}
+  .badge-open{background:#E3F7F6; color:var(--tiffany-dark);}
+  .badge-booked{background:#FFEEE9; color:var(--coral-dark);}
+  .badge-wait{background:#FFF6E0; color:#A9760B;}
+
+  /* ADMIN */
+  .admin-overlay{
+    position:fixed; inset:0; background:rgba(6,60,58,0.55); display:flex; align-items:center; justify-content:center;
+    padding:20px; z-index:50;
+  }
+  .admin-modal{background:#fff; border-radius:20px; padding:24px 22px; width:100%; max-width:340px;}
+  .admin-modal h3{margin:0 0 4px; font-size:17px;}
+  .admin-modal p.sub{font-size:12.5px; color:var(--ink-soft); margin:0 0 16px;}
+  .pin-error{color:var(--danger); font-size:12.5px; margin-top:8px; display:none;}
+
+  .admin-header{
+    display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;
+  }
+  .admin-header .atitle{font-weight:900; font-size:16px;}
+  .tab-row{display:flex; gap:8px; margin-bottom:16px;}
+  .tab-btn{
+    flex:1; text-align:center; padding:10px 4px; border-radius:12px; border:1.5px solid var(--border);
+    font-size:13.5px; font-weight:700; color:var(--ink-soft); background:#fff; cursor:pointer;
+  }
+  .tab-btn.active{background:var(--tiffany-deep); border-color:var(--tiffany-deep); color:#fff;}
+
+  .slot-row{
+    border:1.5px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:10px; background:#fff;
+  }
+  .slot-row .top-line{display:flex; justify-content:space-between; align-items:center;}
+  .slot-row .dt{font-weight:800; font-size:14.5px; font-family:'Baloo 2',sans-serif;}
+  .slot-row .note{font-size:12px; color:var(--ink-soft); margin-top:4px;}
+  .slot-row .patient-info{
+    margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); font-size:12.5px; line-height:1.8;
+  }
+  .slot-row .patient-info b{color:var(--ink);}
+  .row-actions{display:flex; gap:8px; margin-top:10px;}
+
+  .waitlist-row{
+    border:1.5px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:10px; background:#fff;
+    font-size:12.5px; line-height:1.8;
+  }
+  .waitlist-row .wname{font-weight:800; font-size:14.5px; margin-bottom:2px;}
+
+  .footer-note{text-align:center; font-size:11px; color:var(--ink-faint); padding:14px 30px 0; line-height:1.6;}
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff;
+    padding:11px 20px; border-radius:30px; font-size:13.5px; z-index:100; opacity:0; transition:opacity .3s; pointer-events:none;
+    max-width:80%; text-align:center;
+  }
+  .toast.show{opacity:1;}
+  .loading-wrap{display:flex; align-items:center; justify-content:center; padding:60px 0; color:var(--ink-soft); font-size:13.5px;}
+</style>
+</head>
+<body>
+<div class="app-shell" id="app"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============ FIREBASE 設定 ============ */
+/* 請至 Firebase 主控台 > 專案設定 > 一般 > 你的應用程式，複製網頁應用程式設定值貼在這裡 */
+const firebaseConfig = {
+  apiKey: "AIzaSyBgvbGScAeBC7gQsNoQ7QwmJIanpLGGWLs",
+  authDomain: "ei-booking.firebaseapp.com",
+  projectId: "ei-booking",
+  storageBucket: "ei-booking.firebasestorage.app",
+  messagingSenderId: "52050810041",
+  appId: "1:52050810041:web:f30dba6d6f856c1c14f768"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const CLINIC_COLLECTION = 'clinicData'; // Firestore collection 名稱
+
+/* ============ STATE ============ */
+const ADMIN_PIN = "0000"; // 展示用簡易密碼，正式上線請改為真實後端驗證機制
+
+let slots = [];
+let waitlist = [];
+let cancelledOcc = [];   // 已被後台取消的「固定時段」單次紀錄 (格式: "YYYY-MM-DD|HH:MM")
+let dataLoaded = false;
+
+// 預設固定門診／評估時段樣板：dow 依 JS 慣例 0=週日...6=週六
+// 週二(2) 09:20 / 10:00 / 10:40，週三(3) 20:00，週五(5) 17:50 / 18:50
+const SLOT_TEMPLATE = [
+  { dow:2, time:'09:20' },
+  { dow:2, time:'10:00' },
+  { dow:2, time:'10:40' },
+  { dow:3, time:'20:00' },
+  { dow:5, time:'17:50' },
+  { dow:5, time:'18:50' },
+];
+const TEMPLATE_LABEL = '週二 09:20、10:00、10:40｜週三 20:00｜週五 17:50、18:50';
+
+let state = {
+  view: 'patient',        // patient | admin
+  patientStep: 1,
+  form: { name:'', birth:'', phone:'', issue:'' },
+  selectedDate: null,
+  selectedSlotId: null,
+  waitlistMode: false,     // true if quota exceeded or no slots at all -> goes to waitlist
+  bookingResult: null,
+  adminLoggedIn: false,
+  showAdminLogin: false,
+  adminTab: 'slots',
+  newSlot: { date:'', time:'', note:'' },
+  lookup: { name:'', birth:'', results:[], searched:false },
+};
+
+/* ============ HELPERS ============ */
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+90); return d.toISOString().slice(0,10); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+function normPhone(p){ return (p||'').replace(/\D/g,''); }
+
+// 系統自動計算：以「電話 + 生日」比對已預約紀錄，算出此童已使用過的評估/門診次數
+function usedCountFor(phone, birth){
+  const np = normPhone(phone);
+  return slots.filter(s => s.status==='booked' && s.booking &&
+    normPhone(s.booking.phone)===np && s.booking.birth===birth).length;
+}
+
+function calcAge(birthStr){
+  if(!birthStr) return null;
+  const b = new Date(birthStr+'T00:00:00');
+  const now = new Date();
+  if(isNaN(b.getTime()) || b > now) return null;
+  let years = now.getFullYear() - b.getFullYear();
+  let months = now.getMonth() - b.getMonth();
+  if(now.getDate() < b.getDate()) months--;
+  if(months < 0){ years--; months += 12; }
+  return years+'歲'+months+'個月';
+}
+
+const AGE_LIMIT_MSG = '很抱歉由於健保政策規範，目前早療初評僅提供8歲半以下兒童。超過8歲半兒童建議尋求兒童身心科協助。';
+
+function ageInMonths(birthStr){
+  if(!birthStr) return null;
+  const b = new Date(birthStr+'T00:00:00');
+  const now = new Date();
+  if(isNaN(b.getTime()) || b > now) return null;
+  let years = now.getFullYear() - b.getFullYear();
+  let months = now.getMonth() - b.getMonth();
+  if(now.getDate() < b.getDate()) months--;
+  if(months < 0){ years--; months += 12; }
+  return years*12 + months;
+}
+function isOverAgeLimit(birthStr){
+  const m = ageInMonths(birthStr);
+  return m !== null && m > 102;
+}
+
+function fmtDateChip(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = ['日','一','二','三','四','五','六'][d.getDay()];
+  return { dow:'週'+dow, dnum:(d.getMonth()+1)+'/'+d.getDate() };
+}
+function fmtDateFull(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = ['日','一','二','三','四','五','六'][d.getDay()];
+  return (d.getMonth()+1)+'月'+d.getDate()+'日（週'+dow+'）';
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ============ STORAGE (Firestore) ============ */
+async function loadData(){
+  try{
+    const doc = await db.collection(CLINIC_COLLECTION).doc('slots').get();
+    slots = doc.exists && doc.data().json ? JSON.parse(doc.data().json) : [];
+  }catch(e){ console.error(e); slots = []; }
+  try{
+    const doc2 = await db.collection(CLINIC_COLLECTION).doc('waitlist').get();
+    waitlist = doc2.exists && doc2.data().json ? JSON.parse(doc2.data().json) : [];
+  }catch(e){ console.error(e); waitlist = []; }
+  try{
+    const doc3 = await db.collection(CLINIC_COLLECTION).doc('cancelledOcc').get();
+    cancelledOcc = doc3.exists && doc3.data().json ? JSON.parse(doc3.data().json) : [];
+  }catch(e){ console.error(e); cancelledOcc = []; }
+  dataLoaded = true;
+}
+async function saveSlots(){
+  try{ await db.collection(CLINIC_COLLECTION).doc('slots').set({ json: JSON.stringify(slots) }); }
+  catch(e){ console.error(e); showToast('資料儲存失敗，請重試'); }
+}
+async function saveWaitlist(){
+  try{ await db.collection(CLINIC_COLLECTION).doc('waitlist').set({ json: JSON.stringify(waitlist) }); }
+  catch(e){ console.error(e); showToast('資料儲存失敗，請重試'); }
+}
+async function saveCancelled(){
+  try{ await db.collection(CLINIC_COLLECTION).doc('cancelledOcc').set({ json: JSON.stringify(cancelledOcc) }); }
+  catch(e){ console.error(e); showToast('資料儲存失敗，請重試'); }
+}
+
+// 依樣板自動補齊未來三個月內的固定時段（已被後台取消或已存在者不重複產生）
+function ensureTemplateSlots(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  let changed = false;
+  for(let i=0; i<=90; i++){
+    const d = new Date(today); d.setDate(d.getDate()+i);
+    const dow = d.getDay();
+    const matches = SLOT_TEMPLATE.filter(t=>t.dow===dow);
+    if(matches.length===0) continue;
+    const dateStr = d.toISOString().slice(0,10);
+    matches.forEach(t=>{
+      const key = dateStr+'|'+t.time;
+      if(cancelledOcc.includes(key)) return;
+      const exists = slots.some(s=>s.date===dateStr && s.time===t.time);
+      if(!exists){
+        slots.push({ id:uid(), date:dateStr, time:t.time, note:'', status:'open', booking:null, source:'template' });
+        changed = true;
+      }
+    });
+  }
+  return changed;
+}
+
+/* ============ FOOTPRINT STEPS ============ */
+function renderFootprints(){
+  const steps = ['填寫資料','選擇時段','完成預約'];
+  let html = '<div class="footprints">';
+  steps.forEach((label, i)=>{
+    const n = i+1;
+    const active = state.patientStep >= n;
+    html += '<div class="fp-step '+(active?'active':'')+'"><div class="fp-icon">'+n+'</div><div class="fp-label">'+label+'</div></div>';
+    if(i < steps.length-1){
+      html += '<div class="fp-line '+(state.patientStep > n ? 'active':'')+'"></div>';
+    }
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ============ RENDER: HEADER ============ */
+function renderHeader(){
+  return `
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="clinic-name">EI BOOKING</div>
+        <div class="title">家歡診所兒童早療暨<br>門診評估預約表</div>
+      </div>
+      <button class="gear-btn" id="gearBtn" title="院所後台">⚙</button>
+    </div>
+    ${state.view==='patient' ? renderFootprints() : ''}
+  </div>`;
+}
+
+/* ============ NOTICE CARD (reusable) ============ */
+function renderNoticeCard(){
+  return `
+    <div class="notice-card">
+      <h3>🌷 兒童評估與門診預約小提醒</h3>
+      <div class="notice-item">
+        <b>1. 請攜帶孩子的健保卡及評估報告（若已於醫院評估）。</b>
+      </div>
+      <div class="notice-item">
+        <b>2. 預約時段包含約 30 分鐘的評估及門診。</b>
+        <div class="notice-sub">考量評估、候診及門診銜接時間，建議家長預留約 1～1.5 小時，讓整個流程能更從容、順利地完成。</div>
+      </div>
+      <div class="notice-item">
+        <b>3. 顯示的時間為報到時間，提醒家長準時報到唷！附近難停車，若開車請預留較多的停車時間。</b>
+        <div class="notice-sub">因後續仍有其他孩子安排評估及課程，若遲到超過 10 分鐘，可能會影響後續孩子的時段，因此將協助您另行安排合適的評估時間，謝謝您的體諒與配合。</div>
+      </div>
+      <div class="notice-item">
+        <b>4. 為了讓更多有需要的孩子都有機會獲得評估與門診服務，每位孩童原則上提供 2 次評估及門診機會。若無法前來請於一日前線上取消。</b>
+        <div class="notice-sub">若已有 2 次評估及門診預約，之後仍有評估需求，也歡迎先留下聯絡資料登記候補；如遇其他預約個案臨時取消，我們會再依候補情形以電話與您聯繫。</div>
+      </div>
+      <div class="notice-thanks">謝謝家長們的理解與配合，讓有限的評估時段能更妥善地安排，也讓每位孩子都能有更完整、安心的評估過程。 💛</div>
+    </div>`;
+}
+
+/* ============ RENDER: PATIENT STEP 1 ============ */
+function renderStep1(){
+  const f = state.form;
+  return `
+  <div class="content">
+    <div style="text-align:right; margin-bottom:6px;">
+      <button class="link-btn" id="gotoLookupBtn">查詢／取消預約 ›</button>
+    </div>
+    ${renderNoticeCard()}
+
+    <div class="card">
+      <label class="field-label">兒童全名 <span class="req">*</span></label>
+      <input type="text" id="f_name" placeholder="請輸入兒童全名" value="${f.name}">
+
+      <label class="field-label">兒童生日 <span class="req">*</span></label>
+      <input type="date" id="f_birth" max="${todayStr()}" value="${f.birth}">
+      <div class="age-hint" id="ageHint" style="display:${f.birth && !isOverAgeLimit(f.birth) ? 'block':'none'}">目前年齡：${calcAge(f.birth)||''}</div>
+      <div class="age-warning" id="ageWarning" style="display:${f.birth && isOverAgeLimit(f.birth) ? 'block':'none'}">⚠️ ${AGE_LIMIT_MSG}</div>
+
+      <label class="field-label">聯絡電話 <span class="req">*</span></label>
+      <input type="tel" id="f_phone" placeholder="0912-345-678" value="${f.phone}">
+
+      <label class="field-label">主要問題 <span class="req">*</span></label>
+      <textarea id="f_issue" placeholder="請簡述孩子目前主要的發展或就診問題">${f.issue}</textarea>
+
+      <button class="btn btn-primary" id="toStep2Btn" ${f.birth && isOverAgeLimit(f.birth) ? 'disabled':''}>下一步：選擇時段</button>
+    </div>
+    <div class="footer-note">本系統為預約管理工具，個人資料僅供本院安排評估與門診使用。</div>
+  </div>`;
+}
+
+/* ============ RENDER: PATIENT STEP 2 ============ */
+function availableDates(){
+  const today = todayStr(), maxD = maxDateStr();
+  const openDates = [...new Set(
+    slots.filter(s=>s.status==='open' && s.date>=today && s.date<=maxD).map(s=>s.date)
+  )].sort();
+  return openDates;
+}
+function slotsForDate(dateStr){
+  return slots.filter(s=>s.status==='open' && s.date===dateStr).sort((a,b)=>a.time.localeCompare(b.time));
+}
+
+function renderSummaryChip(){
+  const f = state.form;
+  const initial = f.name ? f.name.charAt(0) : '兒';
+  return `<div class="summary-chip">
+    <div class="avatar">${initial}</div>
+    <div><div class="sname">${f.name}</div><div class="sage">${calcAge(f.birth)||''}・${f.phone}</div></div>
+  </div>`;
+}
+
+function renderStep2(){
+  const dates = availableDates();
+  const goWaitlist = state.waitlistMode || dates.length===0;
+
+  let body = '';
+  if(goWaitlist){
+    const reason = state.waitlistMode
+      ? '依規定，該童已達兩次評估／門診機會上限，僅能為您登記候補。若有預約個案臨時取消，本院將主動致電通知遞補。'
+      : '目前暫無開放時段，將為您登記候補，待有時段開出將優先通知。';
+    body = `
+    <div class="card">
+      <div style="text-align:center; padding:6px 0 14px;">
+        <div style="font-size:34px;">📋</div>
+        <div style="font-weight:800; font-size:15.5px; margin-top:6px;">登記候補通知</div>
+        <div style="font-size:13px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">${reason}</div>
+      </div>
+      <button class="btn btn-primary" id="submitWaitlistBtn">送出候補登記</button>
+      <button class="btn btn-ghost" id="backStep1Btn">返回上一步</button>
+    </div>`;
+  } else {
+    const selDate = state.selectedDate && dates.includes(state.selectedDate) ? state.selectedDate : dates[0];
+    if(state.selectedDate !== selDate){ state.selectedDate = selDate; }
+    const daySlots = slotsForDate(selDate);
+    body = `
+    <div class="card">
+      <label class="field-label" style="margin-top:0;">選擇日期</label>
+      <div class="date-scroll" id="dateScroll">
+        ${dates.map(d=>{
+          const c = fmtDateChip(d);
+          return `<div class="date-chip ${d===selDate?'selected':''}" data-date="${d}">
+            <div class="dow">${c.dow}</div><div class="dnum">${c.dnum}</div></div>`;
+        }).join('')}
+      </div>
+      <label class="field-label">選擇時段（${fmtDateFull(selDate)}）</label>
+      <div class="time-grid" id="timeGrid">
+        ${daySlots.map(s=>`
+          <div class="time-btn ${state.selectedSlotId===s.id?'selected':''}" data-id="${s.id}">${s.time}</div>
+        `).join('')}
+      </div>
+      ${daySlots.some(s=>s.note) ? '<div class="time-note">＊部分時段附有備註，確認預約時將顯示</div>' : ''}
+      <button class="btn btn-primary" id="toStep3Btn" ${state.selectedSlotId?'':'disabled'}>確認預約時段</button>
+      <button class="btn btn-ghost" id="backStep1Btn">返回上一步</button>
+    </div>`;
+  }
+
+  return `<div class="content">${renderSummaryChip()}${body}</div>`;
+}
+
+/* ============ RENDER: PATIENT STEP 3 (confirmation) ============ */
+function renderStep3(){
+  const r = state.bookingResult;
+  if(!r) return `<div class="content"><div class="empty-state">發生錯誤，請重新預約</div></div>`;
+  if(r.type==='waitlist'){
+    return `<div class="content"><div class="card confirm-box">
+      <div class="check-circle">📋</div>
+      <h2>已完成候補登記</h2>
+      <p>已收到 ${r.name} 的候補資料，若有時段開出或有個案臨時取消，本院將以電話 ${r.phone} 主動聯繫。</p>
+      <div class="detail-row"><span class="k">兒童姓名</span><span class="v">${r.name}</span></div>
+      <div class="detail-row"><span class="k">年齡</span><span class="v">${r.age}</span></div>
+      <div class="detail-row"><span class="k">聯絡電話</span><span class="v">${r.phone}</span></div>
+      <div class="detail-row"><span class="k">主要問題</span><span class="v">${r.issue}</span></div>
+      <button class="btn btn-secondary" id="restartBtn">返回首頁</button>
+    </div></div>`;
+  }
+  return `<div class="content"><div class="card confirm-box">
+    <div class="check-circle">✓</div>
+    <h2>預約成功</h2>
+    <div class="detail-row"><span class="k">兒童姓名</span><span class="v">${r.name}</span></div>
+    <div class="detail-row"><span class="k">年齡</span><span class="v">${r.age}</span></div>
+    <div class="detail-row"><span class="k">預約日期</span><span class="v">${fmtDateFull(r.date)}</span></div>
+    <div class="detail-row"><span class="k">預約時間</span><span class="v">${r.time}</span></div>
+    <div class="detail-row"><span class="k">聯絡電話</span><span class="v">${r.phone}</span></div>
+    <div class="detail-row"><span class="k">主要問題</span><span class="v">${r.issue}</span></div>
+    ${r.note?`<div class="detail-row"><span class="k">備註</span><span class="v">${r.note}</span></div>`:''}
+    <button class="btn btn-secondary" id="restartBtn">返回首頁</button>
+  </div>
+  <div style="margin-top:16px;">${renderNoticeCard()}</div>
+  </div>`;
+}
+
+/* ============ RENDER: LOOKUP / CANCEL ============ */
+function renderLookup(){
+  const lk = state.lookup;
+  let resultsHtml = '';
+  if(lk.searched){
+    if(lk.results.length===0){
+      resultsHtml = `<div class="empty-state"><div class="emoji">🔍</div>查無符合的預約紀錄<br>請確認姓名與生日是否正確</div>`;
+    } else {
+      resultsHtml = lk.results.map(s=>{
+        const cancellable = s.date > todayStr();
+        return `<div class="slot-row">
+          <div class="top-line">
+            <div class="dt">${fmtDateFull(s.date)}　${s.time}</div>
+            <span class="badge badge-booked">已預約</span>
+          </div>
+          ${s.note ? `<div class="note">備註：${s.note}</div>` : ''}
+          <div class="row-actions">
+            ${cancellable
+              ? `<button class="btn btn-danger btn-small" data-cancel-own="${s.id}">取消此預約</button>`
+              : `<span style="font-size:12px; color:var(--ink-faint);">已超過線上取消時限，如需異動請致電本院</span>`}
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+  return `<div class="content">
+    <div class="card">
+      <div style="font-weight:800; font-size:15.5px; margin-bottom:4px;">查詢／取消我的預約</div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; line-height:1.6;">請輸入預約時填寫的兒童全名與生日進行查詢。如需取消，請於預約日期一日前線上取消；當日異動請直接致電本院。</div>
+      <label class="field-label" style="margin-top:10px;">兒童全名</label>
+      <input type="text" id="lk_name" placeholder="請輸入兒童全名" value="${lk.name}">
+      <label class="field-label">兒童生日</label>
+      <input type="date" id="lk_birth" max="${todayStr()}" value="${lk.birth}">
+      <button class="btn btn-primary" id="lookupSearchBtn">查詢預約</button>
+      <button class="btn btn-ghost" id="backToBookBtn">‹ 返回預約首頁</button>
+    </div>
+    ${lk.searched ? `<div style="font-weight:800; font-size:14px; margin:14px 4px 10px;">查詢結果</div>${resultsHtml}` : ''}
+  </div>`;
+}
+
+
+function renderAdminLogin(){
+  return `<div class="admin-overlay" id="adminOverlay">
+    <div class="admin-modal">
+      <h3>院所後台管理</h3>
+      <p class="sub">請輸入管理密碼以進入後台設定時段</p>
+      <input type="tel" id="pinInput" placeholder="請輸入密碼" style="text-align:center; letter-spacing:4px;">
+      <div class="pin-error" id="pinError">密碼錯誤，請再試一次</div>
+      <button class="btn btn-primary" id="pinSubmitBtn">登入</button>
+      <button class="btn btn-ghost" id="pinCancelBtn">取消</button>
+    </div>
+  </div>`;
+}
+
+/* ============ RENDER: ADMIN DASHBOARD ============ */
+function renderAdmin(){
+  const today = todayStr();
+  const upcoming = slots.filter(s=>s.date>=today).sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
+
+  let tabContent = '';
+  if(state.adminTab==='slots'){
+    const today2 = todayStr(), maxD2 = maxDateStr();
+    const activeCancelled = cancelledOcc.filter(k=>{
+      const d = k.split('|')[0];
+      return d>=today2 && d<=maxD2;
+    }).sort();
+    tabContent = `
+    <div class="notice-card">
+      <h3>📅 固定門診／評估時段</h3>
+      <div style="font-size:13px; line-height:1.7;">${TEMPLATE_LABEL}</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統會自動每週開放上述固定時段（至未來三個月），如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
+    </div>
+    <div class="card">
+      <label class="field-label" style="margin-top:0;">手動加開其他時段</label>
+      <div style="display:flex; gap:8px;">
+        <input type="date" id="ns_date" min="${today}" max="${maxDateStr()}" value="${state.newSlot.date}" style="flex:1;">
+        <input type="text" id="ns_time" placeholder="09:30" value="${state.newSlot.time}" style="width:90px;">
+      </div>
+      <label class="field-label">備註（選填）</label>
+      <input type="text" id="ns_note" placeholder="例如：限初評 / 醫師X門診" value="${state.newSlot.note}">
+      <button class="btn btn-primary" id="addSlotBtn">新增時段</button>
+      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放未來三個月內（至 ${maxDateStr()}）的時段供家長預約。</div>
+    </div>
+    <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">時段列表（共 ${upcoming.length} 筆）</div>
+    ${upcoming.length===0 ? '<div class="empty-state"><div class="emoji">🗓️</div>目前尚無時段，請於上方新增</div>' :
+      upcoming.map(s=>renderSlotRow(s)).join('')}
+    ${activeCancelled.length>0 ? `
+    <div style="font-weight:800; font-size:14px; margin:18px 4px 10px;">已停開的固定時段（${activeCancelled.length}）</div>
+    ${activeCancelled.map(k=>{
+      const [d,t] = k.split('|');
+      return `<div class="waitlist-row" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>${fmtDateFull(d)}　${t}</span>
+        <button class="btn btn-secondary btn-small" data-restore-occ="${k}">恢復開放</button>
+      </div>`;
+    }).join('')}
+    ` : ''}
+    `;
+  } else {
+    const sortedWait = [...waitlist].sort((a,b)=>a.submittedAt - b.submittedAt);
+    tabContent = `
+    <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">候補名單（共 ${sortedWait.length} 筆，依登記先後排序）</div>
+    ${sortedWait.length===0 ? '<div class="empty-state"><div class="emoji">📋</div>目前尚無候補登記</div>' :
+      sortedWait.map((w,i)=>`
+      <div class="waitlist-row">
+        <div class="wname">${i+1}. ${w.name}（${w.age}）</div>
+        <div>電話：${w.phone}</div>
+        <div>主要問題：${w.issue}</div>
+        <div>累計次數：${w.priorLabel}</div>
+        <div style="color:var(--ink-faint);">登記時間：${new Date(w.submittedAt).toLocaleString('zh-TW')}</div>
+        <div class="row-actions">
+          <button class="btn btn-secondary btn-small" data-remove-wait="${w.id}">已聯繫，移除</button>
+        </div>
+      </div>`).join('')}
+    `;
+  }
+
+  return `<div class="content">
+    <div class="admin-header">
+      <div class="atitle">院所後台管理</div>
+      <button class="btn btn-ghost btn-small" id="adminLogoutBtn">登出</button>
+    </div>
+    <div class="tab-row">
+      <div class="tab-btn ${state.adminTab==='slots'?'active':''}" data-tab="slots">時段管理</div>
+      <div class="tab-btn ${state.adminTab==='waitlist'?'active':''}" data-tab="waitlist">候補名單（${waitlist.length}）</div>
+    </div>
+    ${tabContent}
+  </div>`;
+}
+
+function renderSlotRow(s){
+  const badge = s.status==='open' ? '<span class="badge badge-open">可預約</span>' : '<span class="badge badge-booked">已預約</span>';
+  let patientBlock = '';
+  if(s.status==='booked' && s.booking){
+    const b = s.booking;
+    patientBlock = `<div class="patient-info">
+      <div><b>兒童：</b>${b.name}（${b.age}）</div>
+      <div><b>電話：</b>${b.phone}</div>
+      <div><b>主要問題：</b>${b.issue}</div>
+      <div><b>累計次數：</b>${b.priorLabel}</div>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-danger btn-small" data-cancel-booking="${s.id}">取消此預約</button>
+    </div>`;
+  } else {
+    patientBlock = `<div class="row-actions">
+      <button class="btn btn-danger btn-small" data-delete-slot="${s.id}">刪除時段</button>
+    </div>`;
+  }
+  return `<div class="slot-row">
+    <div class="top-line">
+      <div class="dt">${fmtDateFull(s.date)}　${s.time}</div>
+      ${badge}
+    </div>
+    ${s.note ? `<div class="note">備註：${s.note}</div>` : ''}
+    ${patientBlock}
+  </div>`;
+}
+
+/* ============ MASTER RENDER ============ */
+function render(){
+  const root = document.getElementById('app');
+  if(!dataLoaded){
+    root.innerHTML = renderHeader() + '<div class="content"><div class="loading-wrap">資料載入中…</div></div>';
+    return;
+  }
+  let html = renderHeader();
+  if(state.view === 'admin'){
+    html += renderAdmin();
+  } else if(state.view === 'lookup'){
+    html += renderLookup();
+  } else {
+    if(state.patientStep===1) html += renderStep1();
+    else if(state.patientStep===2) html += renderStep2();
+    else html += renderStep3();
+  }
+  if(state.showAdminLogin){
+    html += renderAdminLogin();
+  }
+  root.innerHTML = html;
+  bindEvents();
+}
+
+/* ============ EVENT BINDING ============ */
+function bindEvents(){
+  const gearBtn = document.getElementById('gearBtn');
+  if(gearBtn) gearBtn.onclick = ()=>{
+    if(state.view==='admin'){ /* already in admin */ return; }
+    state.showAdminLogin = true; render();
+  };
+
+  // Admin login modal
+  const pinCancel = document.getElementById('pinCancelBtn');
+  if(pinCancel) pinCancel.onclick = ()=>{ state.showAdminLogin=false; render(); };
+  const pinSubmit = document.getElementById('pinSubmitBtn');
+  if(pinSubmit) pinSubmit.onclick = ()=>{
+    const val = document.getElementById('pinInput').value;
+    if(val === ADMIN_PIN){
+      state.showAdminLogin=false; state.view='admin'; state.adminTab='slots'; render();
+    } else {
+      document.getElementById('pinError').style.display='block';
+    }
+  };
+  const pinInput = document.getElementById('pinInput');
+  if(pinInput){
+    pinInput.focus();
+    pinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') pinSubmit.click(); });
+  }
+
+  if(state.view==='admin'){ bindAdminEvents(); return; }
+
+  if(state.view==='lookup'){ bindLookupEvents(); return; }
+
+  const gotoLookup = document.getElementById('gotoLookupBtn');
+  if(gotoLookup) gotoLookup.onclick = ()=>{
+    state.lookup = { name:'', birth:'', results:[], searched:false };
+    state.view = 'lookup';
+    render();
+  };
+
+  // ---- Patient step 1 ----
+  if(state.patientStep===1){
+    const nameEl = document.getElementById('f_name');
+    const birthEl = document.getElementById('f_birth');
+    const phoneEl = document.getElementById('f_phone');
+    const issueEl = document.getElementById('f_issue');
+    if(nameEl) nameEl.addEventListener('input', e=>{ state.form.name = e.target.value; });
+    if(phoneEl) phoneEl.addEventListener('input', e=>{ state.form.phone = e.target.value; });
+    if(issueEl) issueEl.addEventListener('input', e=>{ state.form.issue = e.target.value; });
+    if(birthEl) birthEl.addEventListener('change', e=>{
+      state.form.birth = e.target.value;
+      if(state.form.birth && isOverAgeLimit(state.form.birth)){
+        alert(AGE_LIMIT_MSG);
+      }
+      render();
+    });
+    const nextBtn = document.getElementById('toStep2Btn');
+    if(nextBtn) nextBtn.onclick = ()=>{
+      const f = state.form;
+      if(!f.name.trim()){ showToast('請填寫兒童全名'); return; }
+      if(!f.birth || !calcAge(f.birth)){ showToast('請選擇正確的兒童生日'); return; }
+      if(isOverAgeLimit(f.birth)){ alert(AGE_LIMIT_MSG); return; }
+      if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡電話'); return; }
+      if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
+      // 系統自動比對電話+生日，計算此童已使用過的評估/門診次數
+      const used = usedCountFor(f.phone, f.birth);
+      state.waitlistMode = (used >= 2);
+      state.selectedDate = null;
+      state.selectedSlotId = null;
+      state.patientStep = 2;
+      render();
+    };
+  }
+
+  // ---- Patient step 2 ----
+  if(state.patientStep===2){
+    const backBtn = document.getElementById('backStep1Btn');
+    if(backBtn) backBtn.onclick = ()=>{ state.patientStep=1; render(); };
+
+    document.querySelectorAll('.date-chip').forEach(el=>{
+      el.onclick = ()=>{ state.selectedDate = el.getAttribute('data-date'); state.selectedSlotId=null; render(); };
+    });
+    document.querySelectorAll('.time-btn').forEach(el=>{
+      el.onclick = ()=>{ state.selectedSlotId = el.getAttribute('data-id'); render(); };
+    });
+    const toStep3 = document.getElementById('toStep3Btn');
+    if(toStep3) toStep3.onclick = async ()=>{
+      const slot = slots.find(s=>s.id===state.selectedSlotId);
+      if(!slot || slot.status!=='open'){ showToast('此時段已被預約，請重新選擇'); await loadData(); render(); return; }
+      const f = state.form;
+      const age = calcAge(f.birth);
+      const used = usedCountFor(f.phone, f.birth);
+      const countLabel = '第 '+(used+1)+' 次（上限2次）';
+      slot.status='booked';
+      slot.booking = { name:f.name, birth:f.birth, age, phone:f.phone, issue:f.issue, priorLabel:countLabel, bookedAt:Date.now() };
+      await saveSlots();
+      state.bookingResult = { type:'booking', name:f.name, age, phone:f.phone, issue:f.issue, date:slot.date, time:slot.time, note:slot.note };
+      state.patientStep = 3;
+      render();
+    };
+
+    const submitWait = document.getElementById('submitWaitlistBtn');
+    if(submitWait) submitWait.onclick = async ()=>{
+      const f = state.form;
+      const age = calcAge(f.birth);
+      const used = usedCountFor(f.phone, f.birth);
+      const countLabel = used>=2 ? '已達2次上限' : ('第 '+(used+1)+' 次（上限2次）');
+      const entry = { id:uid(), name:f.name, birth:f.birth, age, phone:f.phone, issue:f.issue, priorLabel:countLabel, submittedAt:Date.now() };
+      waitlist.push(entry);
+      await saveWaitlist();
+      state.bookingResult = { type:'waitlist', name:f.name, age, phone:f.phone, issue:f.issue };
+      state.patientStep = 3;
+      render();
+    };
+  }
+
+  // ---- Patient step 3 ----
+  if(state.patientStep===3){
+    const restartBtn = document.getElementById('restartBtn');
+    if(restartBtn) restartBtn.onclick = ()=>{
+      state.form = { name:'', birth:'', phone:'', issue:'' };
+      state.selectedDate=null; state.selectedSlotId=null; state.bookingResult=null; state.waitlistMode=false;
+      state.patientStep = 1;
+      render();
+    };
+  }
+}
+
+function bindLookupEvents(){
+  const nameEl = document.getElementById('lk_name');
+  const birthEl = document.getElementById('lk_birth');
+  if(nameEl) nameEl.addEventListener('input', e=>{ state.lookup.name = e.target.value; });
+  if(birthEl) birthEl.addEventListener('change', e=>{ state.lookup.birth = e.target.value; });
+
+  const backBtn = document.getElementById('backToBookBtn');
+  if(backBtn) backBtn.onclick = ()=>{ state.view='patient'; state.patientStep=1; render(); };
+
+  const searchBtn = document.getElementById('lookupSearchBtn');
+  if(searchBtn) searchBtn.onclick = ()=>{
+    const lk = state.lookup;
+    if(!lk.name.trim()){ showToast('請填寫兒童全名'); return; }
+    if(!lk.birth){ showToast('請選擇兒童生日'); return; }
+    const today = todayStr();
+    lk.results = slots.filter(s=>
+      s.status==='booked' && s.booking &&
+      s.booking.name.trim()===lk.name.trim() &&
+      s.booking.birth===lk.birth &&
+      s.date>=today
+    ).sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
+    lk.searched = true;
+    render();
+  };
+
+  document.querySelectorAll('[data-cancel-own]').forEach(el=>{
+    el.onclick = async ()=>{
+      const id = el.getAttribute('data-cancel-own');
+      if(!confirm('確定要取消此預約嗎？取消後時段將釋出，若之後仍有需要，請重新預約或登記候補。')) return;
+      const s = slots.find(x=>x.id===id);
+      if(s){ s.status='open'; s.booking=null; }
+      await saveSlots();
+      showToast('已為您取消預約');
+      const lk = state.lookup;
+      lk.results = lk.results.filter(x=>x.id!==id);
+      render();
+    };
+  });
+}
+
+function bindAdminEvents(){
+  const logoutBtn = document.getElementById('adminLogoutBtn');
+  if(logoutBtn) logoutBtn.onclick = ()=>{ state.view='patient'; state.patientStep=1; render(); };
+
+  document.querySelectorAll('.tab-btn').forEach(el=>{
+    el.onclick = ()=>{ state.adminTab = el.getAttribute('data-tab'); render(); };
+  });
+
+  if(state.adminTab==='slots'){
+    const dEl = document.getElementById('ns_date');
+    const tEl = document.getElementById('ns_time');
+    const nEl = document.getElementById('ns_note');
+    if(dEl) dEl.addEventListener('change', e=>{ state.newSlot.date = e.target.value; });
+    if(tEl) tEl.addEventListener('input', e=>{ state.newSlot.time = e.target.value; });
+    if(nEl) nEl.addEventListener('input', e=>{ state.newSlot.note = e.target.value; });
+
+    const addBtn = document.getElementById('addSlotBtn');
+    if(addBtn) addBtn.onclick = async ()=>{
+      const ns = state.newSlot;
+      if(!ns.date){ showToast('請選擇日期'); return; }
+      if(!/^\d{1,2}:\d{2}$/.test(ns.time.trim())){ showToast('請輸入正確時間格式，例如 09:30'); return; }
+      const timeNorm = ns.time.trim().padStart(5,'0');
+      slots.push({ id:uid(), date:ns.date, time:timeNorm, note:ns.note.trim(), status:'open', booking:null });
+      await saveSlots();
+      state.newSlot = { date:'', time:'', note:'' };
+      showToast('已新增時段');
+      render();
+    };
+
+    document.querySelectorAll('[data-delete-slot]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.getAttribute('data-delete-slot');
+        const target = slots.find(s=>s.id===id);
+        if(!confirm('確定要刪除此時段嗎？')) return;
+        if(target && target.source==='template'){
+          const key = target.date+'|'+target.time;
+          if(!cancelledOcc.includes(key)) cancelledOcc.push(key);
+          await saveCancelled();
+        }
+        slots = slots.filter(s=>s.id!==id);
+        await saveSlots();
+        showToast('已刪除時段');
+        render();
+      };
+    });
+    document.querySelectorAll('[data-cancel-booking]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.getAttribute('data-cancel-booking');
+        if(!confirm('確定要取消此預約嗎？時段將釋出供其他人預約，請記得電話通知候補名單。')) return;
+        const s = slots.find(x=>x.id===id);
+        if(s){ s.status='open'; s.booking=null; }
+        await saveSlots();
+        showToast('已取消預約，時段已釋出');
+        render();
+      };
+    });
+    document.querySelectorAll('[data-restore-occ]').forEach(el=>{
+      el.onclick = async ()=>{
+        const key = el.getAttribute('data-restore-occ');
+        cancelledOcc = cancelledOcc.filter(k=>k!==key);
+        await saveCancelled();
+        if(ensureTemplateSlots()){ await saveSlots(); }
+        showToast('已恢復開放此時段');
+        render();
+      };
+    });
+  } else {
+    document.querySelectorAll('[data-remove-wait]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.getAttribute('data-remove-wait');
+        waitlist = waitlist.filter(w=>w.id!==id);
+        await saveWaitlist();
+        render();
+      };
+    });
+  }
+}
+
+/* ============ INIT ============ */
+(async function init(){
+  render(); // show loading
+  await loadData();
+  if(ensureTemplateSlots()){ await saveSlots(); }
+  render();
+})();
+</script>
+</body>
+</html>

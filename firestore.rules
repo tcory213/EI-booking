@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// ⚠️ 重要資安提醒 ⚠️
+// 這份規則目前允許「任何人」讀寫 clinicData 這個 collection，
+// 也就是任何知道你 Firebase 專案設定值的人，都能用瀏覽器主控台
+// 直接讀到全部小朋友的姓名、生日、電話、主要問題等資料，
+// 也能任意竄改或刪除預約資料。
+//
+// 這僅適合「內部測試 / 展示」階段使用。
+// 正式蒐集真實兒童與家長個資（尤其是健康相關資訊）之前，
+// 強烈建議至少完成以下其中之一：
+//   1. 加入 Firebase Authentication，後台管理需登入才能讀取完整病患資料
+//   2. 啟用 Firebase App Check，限制只有你自己的網站能呼叫 Firestore
+//   3. 改用 Cloud Functions 作為中介層，前端不直接讀寫 Firestore
+// 如需協助建置更安全的版本，歡迎再回來請 Claude 協助調整。
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /clinicData/{document=**} {
+      allow read, write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
