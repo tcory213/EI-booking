@@ -703,6 +703,8 @@ function renderAdmin(){
       <h3>📅 固定門診／評估時段</h3>
       <div style="font-size:13px; line-height:1.7;">${TEMPLATE_LABEL}</div>
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統會自動每週開放上述固定時段（至未來三個月），如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
+      <button class="btn btn-secondary btn-small" id="regenTemplateBtn" style="margin-top:10px;">🔄 重新產生固定時段</button>
+      <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">會清除「尚未被預約」的固定時段後依上方樣板重新產生，已被預約的時段與手動加開的時段不會受影響。</div>
     </div>
     <div class="card">
       <label class="field-label" style="margin-top:0;">手動加開其他時段</label>
@@ -988,6 +990,16 @@ function bindAdminEvents(){
   });
 
   if(state.adminTab==='slots'){
+    const regenBtn = document.getElementById('regenTemplateBtn');
+    if(regenBtn) regenBtn.onclick = async ()=>{
+      if(!confirm('確定要重新產生固定時段嗎？\n\n將會刪除「尚未被預約」的固定時段，並依樣板重新產生正確日期。\n已被預約的時段與手動加開的時段不會受影響。')) return;
+      slots = slots.filter(s => !(s.source==='template' && s.status==='open'));
+      const changed = ensureTemplateSlots();
+      await saveSlots();
+      showToast(changed ? '已重新產生固定時段' : '固定時段已是最新狀態');
+      render();
+    };
+
     const dEl = document.getElementById('ns_date');
     const tEl = document.getElementById('ns_time');
     const nEl = document.getElementById('ns_note');
