@@ -9,6 +9,7 @@
 <!-- Firebase (compat SDK，方便以純 <script> 標籤使用) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <style>
   :root{
     --tiffany:#0ABAB5;
@@ -287,10 +288,10 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
 const CLINIC_COLLECTION = 'clinicData'; // Firestore collection 名稱
 
 /* ============ STATE ============ */
-const ADMIN_PIN = "hapi719"; // 展示用簡易密碼，正式上線請改為真實後端驗證機制
 
 let slots = [];
 let waitlist = [];
@@ -677,9 +678,12 @@ function renderAdminLogin(){
   return `<div class="admin-overlay" id="adminOverlay">
     <div class="admin-modal">
       <h3>院所後台管理</h3>
-      <p class="sub">請輸入管理密碼以進入後台設定時段</p>
-      <input type="tel" id="pinInput" placeholder="請輸入密碼" style="text-align:center; letter-spacing:4px;">
-      <div class="pin-error" id="pinError">密碼錯誤，請再試一次</div>
+      <p class="sub">請使用管理員帳號登入</p>
+      <label class="field-label" style="margin-top:0;">帳號 Email</label>
+      <input type="email" id="adminEmailInput" placeholder="admin@example.com" autocomplete="username">
+      <label class="field-label">密碼</label>
+      <input type="password" id="adminPasswordInput" placeholder="請輸入密碼" autocomplete="current-password">
+      <div class="pin-error" id="pinError">帳號或密碼錯誤，請再試一次</div>
       <button class="btn btn-primary" id="pinSubmitBtn">登入</button>
       <button class="btn btn-ghost" id="pinCancelBtn">取消</button>
     </div>
@@ -821,25 +825,53 @@ function bindEvents(){
   const gearBtn = document.getElementById('gearBtn');
   if(gearBtn) gearBtn.onclick = ()=>{
     if(state.view==='admin'){ /* already in admin */ return; }
-    state.showAdminLogin = true; render();
+    if(auth.currentUser){
+      // 已透過 Firebase Authentication 登入過，直接進入後台
+      state.view='admin'; state.adminTab='slots'; render();
+    } else {
+      state.showAdminLogin = true; render();
+    }
   };
 
-  // Admin login modal
+  // Admin login modal (Firebase Authentication)
   const pinCancel = document.getElementById('pinCancelBtn');
   if(pinCancel) pinCancel.onclick = ()=>{ state.showAdminLogin=false; render(); };
   const pinSubmit = document.getElementById('pinSubmitBtn');
-  if(pinSubmit) pinSubmit.onclick = ()=>{
-    const val = document.getElementById('pinInput').value;
-    if(val === ADMIN_PIN){
-      state.showAdminLogin=false; state.view='admin'; state.adminTab='slots'; render();
-    } else {
-      document.getElementById('pinError').style.display='block';
+  if(pinSubmit) pinSubmit.onclick = async ()=>{
+    const emailEl = document.getElementById('adminEmailInput');
+    const passEl = document.getElementById('adminPasswordInput');
+    const errEl = document.getElementById('pinError');
+    const email = emailEl.value.trim();
+    const pass = passEl.value;
+    errEl.style.display = 'none';
+    if(!email || !pass){
+      errEl.textContent = '請輸入帳號與密碼';
+      errEl.style.display = 'block';
+      return;
+    }
+    pinSubmit.disabled = true;
+    pinSubmit.textContent = '登入中…';
+    try{
+      await auth.signInWithEmailAndPassword(email, pass);
+      state.showAdminLogin = false;
+      state.view = 'admin';
+      state.adminTab = 'slots';
+      render();
+    }catch(e){
+      console.error(e);
+      errEl.textContent = '帳號或密碼錯誤，請再試一次';
+      errEl.style.display = 'block';
+      pinSubmit.disabled = false;
+      pinSubmit.textContent = '登入';
     }
   };
-  const pinInput = document.getElementById('pinInput');
-  if(pinInput){
-    pinInput.focus();
-    pinInput.addEventListener('keydown', e=>{ if(e.key==='Enter') pinSubmit.click(); });
+  const emailInput = document.getElementById('adminEmailInput');
+  const passInput = document.getElementById('adminPasswordInput');
+  if(emailInput){
+    emailInput.focus();
+    [emailInput, passInput].forEach(el=>{
+      if(el) el.addEventListener('keydown', e=>{ if(e.key==='Enter') pinSubmit.click(); });
+    });
   }
 
   if(state.view==='admin'){ bindAdminEvents(); return; }
@@ -983,7 +1015,10 @@ function bindLookupEvents(){
 
 function bindAdminEvents(){
   const logoutBtn = document.getElementById('adminLogoutBtn');
-  if(logoutBtn) logoutBtn.onclick = ()=>{ state.view='patient'; state.patientStep=1; render(); };
+  if(logoutBtn) logoutBtn.onclick = async ()=>{
+    await auth.signOut();
+    state.view='patient'; state.patientStep=1; render();
+  };
 
   document.querySelectorAll('.tab-btn').forEach(el=>{
     el.onclick = ()=>{ state.adminTab = el.getAttribute('data-tab'); render(); };
