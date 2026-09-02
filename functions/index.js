@@ -1,8 +1,11 @@
 /**
  * EI Booking — Cloud Functions 中介層
- * 所有涉及病患個資的讀寫都經過這裡，前端不再直接讀寫 patients/bookings/waitlist，
+ * 所有涉及病患個資的讀寫都經過這裡，前端不再直接讀寫 bookings/waitlist，
  * 真正的存取控制邏輯（配額檢查、身分核對、管理員權限）都在伺服器端執行，
  * Firestore 規則對這幾個 collection 一律拒絕前端直接存取（見 firestore.rules）。
+ *
+ * 每一次呼叫都會寫一筆稽核紀錄到 auditLogs（含來源 IP、時間、動作），
+ * 目的是萬一日後懷疑遭入侵或異常存取，可以拿這份紀錄佐證來源 IP／是否來自境外。
  */
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
@@ -76,11 +79,57 @@ function validateBookingInput(data){
 }
 
 /* ============================================================
+ * 稽核紀錄 (Audit Log)
+ * ------------------------------------------------------------
+ * 每次呼叫任何一個 Cloud Function 時，記下：
+ *   - 呼叫時間、呼叫的是哪個函式（action）
+ *   - 來源 IP（從 Google 前端代理附加的 x-forwarded-for 取得，
+ *     這是實際打這支 API 的用戶端真實 IP，不是 Google 自己的 IP）
+ *   - 瀏覽器 User-Agent
+ *   - 若 Google 前端有附上國別資訊（x-appengine-country 等），一併記錄；
+ *     若沒有這個標頭，之後仍可拿 IP 去查詢地理位置（任何 IP 查詢工具都查得到）
+ *   - 若是已登入的管理員操作，記下是哪個管理員帳號（uid/email）
+ *   - App Check 驗證是否通過（app 欄位有值代表通過）
+ * 只有 Cloud Functions（Admin SDK）能寫入這個 collection，前端／一般使用者
+ * 完全無法直接讀寫，只有登入的管理員能透過 adminGetAuditLogs 讀取。
+ * ============================================================ */
+async function logAudit(context, action, extra){
+  try{
+    const req = context.rawRequest || {};
+    const headers = req.headers || {};
+    const xff = headers['x-forwarded-for'] || '';
+    const ip = (xff.split(',')[0] || '').trim() || req.ip || 'unknown';
+    const userAgent = headers['user-agent'] || 'unknown';
+    const country = headers['x-appengine-country']
+      || headers['x-country-code']
+      || null; // Google 前端不一定會附上這個標頭，沒有的話就留空，之後可用 IP 反查
+    const region = headers['x-appengine-region'] || null;
+    const city = headers['x-appengine-city'] || null;
+
+    await db.collection('auditLogs').add({
+      ts: Date.now(),
+      action,
+      ip,
+      userAgent,
+      country, region, city,
+      authUid: context.auth ? context.auth.uid : null,
+      authEmail: (context.auth && context.auth.token) ? (context.auth.token.email || null) : null,
+      appCheckVerified: !!context.app,
+      ...(extra || {})
+    });
+  }catch(e){
+    // 稽核紀錄寫入失敗不應該影響原本的操作，只記錄到 Cloud Functions 自己的 log
+    console.error('audit log 寫入失敗', e);
+  }
+}
+
+/* ============================================================
  * 家長端功能
  * ============================================================ */
 
 // 查詢某個孩子（電話+生日）已使用過幾次評估/門診機會
-exports.checkQuota = functions.https.onCall(async (data) => {
+exports.checkQuota = functions.https.onCall(async (data, context) => {
+  await logAudit(context, 'checkQuota', {});
   const { phone, birth } = data || {};
   if (!phone || !birth) {
     throw new functions.https.HttpsError('invalid-argument', '缺少必要參數');
@@ -90,7 +139,8 @@ exports.checkQuota = functions.https.onCall(async (data) => {
 });
 
 // 預約一個時段（含配額檢查、防止同時被搶）
-exports.bookSlot = functions.https.onCall(async (data) => {
+exports.bookSlot = functions.https.onCall(async (data, context) => {
+  await logAudit(context, 'bookSlot', { slotId: data && data.slotId });
   validateBookingInput(data);
   const { slotId, name, birth, phone, issue } = data;
   if (!slotId) {
@@ -127,7 +177,8 @@ exports.bookSlot = functions.https.onCall(async (data) => {
 });
 
 // 送出候補登記
-exports.submitWaitlist = functions.https.onCall(async (data) => {
+exports.submitWaitlist = functions.https.onCall(async (data, context) => {
+  await logAudit(context, 'submitWaitlist', {});
   validateBookingInput(data);
   const { name, birth, phone, issue } = data;
   const used = await countActiveBookings(phone, birth);
@@ -141,7 +192,8 @@ exports.submitWaitlist = functions.https.onCall(async (data) => {
 });
 
 // 家長查詢自己的預約（用電話+生日核對）
-exports.lookupMyBookings = functions.https.onCall(async (data) => {
+exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
+  await logAudit(context, 'lookupMyBookings', {});
   const { phone, birth } = data || {};
   if (!phone || !birth) {
     throw new functions.https.HttpsError('invalid-argument', '請填寫聯絡電話與兒童生日');
@@ -161,8 +213,9 @@ exports.lookupMyBookings = functions.https.onCall(async (data) => {
 });
 
 // 家長自行取消預約（同樣用電話+生日核對是否為本人）
-exports.cancelMyBooking = functions.https.onCall(async (data) => {
+exports.cancelMyBooking = functions.https.onCall(async (data, context) => {
   const { phone, birth, bookingId } = data || {};
+  await logAudit(context, 'cancelMyBooking', { bookingId });
   if (!phone || !birth || !bookingId) {
     throw new functions.https.HttpsError('invalid-argument', '缺少必要參數');
   }
@@ -196,6 +249,7 @@ exports.cancelMyBooking = functions.https.onCall(async (data) => {
 // 一次取回後台需要的所有資料：時段（含病患資料）、候補名單、固定時段停開清單
 exports.adminGetDashboardData = functions.https.onCall(async (data, context) => {
   requireAuth(context);
+  await logAudit(context, 'adminGetDashboardData', {});
   const [slotsSnap, waitSnap, tplSnap, bookSnap] = await Promise.all([
     db.collection('slots').get(),
     db.collection('waitlist').get(),
@@ -219,6 +273,7 @@ exports.adminGetDashboardData = functions.https.onCall(async (data, context) => 
 
 exports.adminAddSlot = functions.https.onCall(async (data, context) => {
   requireAuth(context);
+  await logAudit(context, 'adminAddSlot', { date: data && data.date, time: data && data.time });
   const { date, time, note } = data || {};
   if (!date || !/^\d{1,2}:\d{2}$/.test(String(time || '').trim())) {
     throw new functions.https.HttpsError('invalid-argument', '請輸入正確的日期與時間');
@@ -231,6 +286,7 @@ exports.adminAddSlot = functions.https.onCall(async (data, context) => {
 
 exports.adminDeleteSlot = functions.https.onCall(async (data, context) => {
   requireAuth(context);
+  await logAudit(context, 'adminDeleteSlot', { slotId: data && data.slotId });
   const { slotId } = data || {};
   const ref = db.collection('slots').doc(slotId);
   const doc = await ref.get();
@@ -256,6 +312,7 @@ exports.adminDeleteSlot = functions.https.onCall(async (data, context) => {
 
 exports.adminCancelBooking = functions.https.onCall(async (data, context) => {
   requireAuth(context);
+  await logAudit(context, 'adminCancelBooking', { slotId: data && data.slotId });
   const { slotId } = data || {};
   const bookSnap = await db.collection('bookings')
     .where('slotId', '==', slotId).where('status', '==', 'active').limit(1).get();
@@ -270,6 +327,7 @@ exports.adminCancelBooking = functions.https.onCall(async (data, context) => {
 
 exports.adminRestoreOccurrence = functions.https.onCall(async (data, context) => {
   requireAuth(context);
+  await logAudit(context, 'adminRestoreOccurrence', { key: data && data.key });
   const { key } = data || {};
   const metaRef = db.collection('templateMeta').doc('cancelledOcc');
   await db.runTransaction(async (tx) => {
@@ -282,6 +340,7 @@ exports.adminRestoreOccurrence = functions.https.onCall(async (data, context) =>
 
 exports.adminRemoveWaitlistEntry = functions.https.onCall(async (data, context) => {
   requireAuth(context);
+  await logAudit(context, 'adminRemoveWaitlistEntry', { entryId: data && data.entryId });
   const { entryId } = data || {};
   await db.collection('waitlist').doc(entryId).delete();
   return { ok: true };
@@ -298,6 +357,7 @@ const SLOT_TEMPLATE = [
 
 exports.adminRegenerateTemplate = functions.https.onCall(async (data, context) => {
   requireAuth(context);
+  await logAudit(context, 'adminRegenerateTemplate', {});
 
   // 1. 刪除尚未被預約的固定時段
   const toDeleteSnap = await db.collection('slots')
@@ -336,4 +396,18 @@ exports.adminRegenerateTemplate = functions.https.onCall(async (data, context) =
   }
 
   return { deleted: toDeleteSnap.size, created: toCreate.length };
+});
+
+/* ============================================================
+ * 稽核紀錄查詢（僅限已登入管理員）
+ * ============================================================ */
+exports.adminGetAuditLogs = functions.https.onCall(async (data, context) => {
+  requireAuth(context);
+  const limit = Math.min(Math.max(parseInt((data && data.limit) || 200, 10) || 200, 1), 500);
+  const snap = await db.collection('auditLogs')
+    .orderBy('ts', 'desc')
+    .limit(limit)
+    .get();
+  const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return { logs };
 });

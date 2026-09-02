@@ -12,11 +12,13 @@ rules_version = '2';
 //     已登入的管理員作為備援／除錯用途，Cloud Functions 用的是 Admin SDK，
 //     不受這裡的規則限制。
 //
-// bookings/{bookingId}、waitlist/{entryId}、templateMeta/{docId}
+// bookings/{bookingId}、waitlist/{entryId}、templateMeta/{docId}、auditLogs/{logId}
 //   → 全部是私密資料或內部設定，一律拒絕前端直接讀寫。
 //     所有存取都必須經過 Cloud Functions，由伺服器端程式碼驗證身分
 //     （電話+生日核對）與管理員權限（Firebase Authentication 已登入）後才能操作。
 //     這是目前最高等級的保護：資料庫本身完全不接受前端直接連線。
+//     auditLogs 記錄每次呼叫 Cloud Function 的時間、來源 IP、User-Agent，
+//     供日後若懷疑遭入侵時，可佐證來源 IP／是否來自境外。
 //
 // patients/{phoneHash}/bookings/{bookingId}（舊版）
 //   → 舊架構已不再使用，一併關閉存取。
@@ -39,6 +41,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /templateMeta/{docId} {
+      allow read, write: if false;
+    }
+    // 稽核紀錄：只有 Cloud Functions（Admin SDK）能寫入，前端一律拒絕直接讀寫，
+    // 管理員需透過 adminGetAuditLogs 這支 Cloud Function 讀取
+    match /auditLogs/{logId} {
       allow read, write: if false;
     }
 

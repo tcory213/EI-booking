@@ -149,6 +149,23 @@ vercel --prod
 Firestore 規則對這些 collection 直接設成「一律拒絕前端存取」。
 只有時段的公開時間表（`slots`，不含個資）還是前端直接讀取，維持速度與免費額度。
 
+### 稽核紀錄（Audit Log）
+
+每一次呼叫 Cloud Function（家長預約、查詢、取消，或後台任何操作）都會自動
+記一筆到 `auditLogs`：時間、來源 IP、瀏覽器 User-Agent、若 Google 有附上國別
+資訊也會一併記下、若是管理員操作會記下是哪個帳號。這個 collection 前端完全
+無法直接讀寫，只有登入後台、點「稽核紀錄」分頁才看得到（呼叫
+`adminGetAuditLogs` 這支函式），目前顯示最近 200 筆。
+
+用途：萬一日後懷疑遭到入侵或有異常存取（例如短時間內大量查詢、或看到明顯
+不像正常使用行為的紀錄），可以用這份紀錄裡的 IP 位址去查詢地理位置與歸屬
+（用任何 IP 查詢工具，例如 https://ipinfo.io/ 或 https://whois.domaintools.com/ ，
+把 IP 貼進去查），佐證是否來自境外或特定可疑來源。國別欄位如果是空的，
+代表 Google 那次沒有附上該資訊，不影響 IP 本身仍然可查。
+
+這個功能會讓 Firestore 每次呼叫都多一次寫入，用量極小（一般小型診所的流量，
+遠低於免費額度），不需要額外設定就能運作，只要照上面步驟部署 `functions` 即可。
+
 ### 是否要搬移舊資料？
 
 之前版本用的是 `clinicData`（單一 JSON blob）或 `patients/{雜湊}/bookings`

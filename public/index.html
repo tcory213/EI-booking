@@ -310,7 +310,23 @@ const fx = firebase.functions();
 let slots = [];       // 公開資料：時段列表 (date/time/note/status/source)，不含任何病患個資
 let waitlist = [];    // 私密資料：候補名單，僅後台登入後才會載入
 let cancelledOcc = [];   // 已被後台取消的「固定時段」單次紀錄 (格式: "YYYY-MM-DD|HH:MM")，僅後台使用
+let auditLogs = [];   // 稽核紀錄，僅後台登入後才會載入
 let dataLoaded = false;
+
+const AUDIT_ACTION_LABELS = {
+  checkQuota: '查詢配額',
+  bookSlot: '家長預約時段',
+  submitWaitlist: '送出候補登記',
+  lookupMyBookings: '家長查詢預約',
+  cancelMyBooking: '家長取消預約',
+  adminGetDashboardData: '後台讀取資料',
+  adminAddSlot: '後台新增時段',
+  adminDeleteSlot: '後台刪除時段',
+  adminCancelBooking: '後台取消預約',
+  adminRestoreOccurrence: '後台恢復時段',
+  adminRemoveWaitlistEntry: '後台移除候補',
+  adminRegenerateTemplate: '後台重新產生時段',
+};
 
 // 預設固定門診／評估時段樣板：dow 依 JS 慣例 0=週日...6=週六
 // 週二(2) 09:20 / 10:00 / 10:40，週三(3) 20:00，週五(5) 17:50 / 18:50
@@ -441,6 +457,18 @@ async function regenerateTemplateOnServer(){
     console.error(e);
     showToast('產生固定時段失敗，請確認已用管理員帳號登入');
     return { created: 0, deleted: 0 };
+  }
+}
+
+// 載入稽核紀錄（僅後台，用於萬一懷疑遭入侵時佐證來源IP／是否來自境外）
+async function loadAuditLogs(){
+  try{
+    const res = await fx.httpsCallable('adminGetAuditLogs')({ limit: 200 });
+    auditLogs = res.data.logs;
+  }catch(e){
+    console.error(e);
+    showToast('讀取稽核紀錄失敗');
+    auditLogs = [];
   }
 }
 
@@ -733,7 +761,7 @@ function renderAdmin(){
     }).join('')}
     ` : ''}
     `;
-  } else {
+  } else if(state.adminTab==='waitlist'){
     const sortedWait = [...waitlist].sort((a,b)=>a.submittedAt - b.submittedAt);
     tabContent = `
     <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">候補名單（共 ${sortedWait.length} 筆，依登記先後排序）</div>
@@ -750,6 +778,29 @@ function renderAdmin(){
         </div>
       </div>`).join('')}
     `;
+  } else {
+    tabContent = `
+    <div class="notice-card">
+      <h3>🛡️ 稽核紀錄</h3>
+      <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">記錄每一次系統操作的時間、來源 IP、瀏覽器資訊。萬一日後懷疑遭入侵或有異常存取，可用來佐證來源 IP、是否來自境外。僅顯示最近 200 筆。</div>
+    </div>
+    <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">最近紀錄（共 ${auditLogs.length} 筆）</div>
+    ${auditLogs.length===0 ? '<div class="empty-state"><div class="emoji">🛡️</div>目前尚無紀錄</div>' :
+      auditLogs.map(l=>{
+        const label = AUDIT_ACTION_LABELS[l.action] || l.action;
+        const time = new Date(l.ts).toLocaleString('zh-TW');
+        const locBits = [l.country, l.region, l.city].filter(Boolean);
+        const loc = locBits.length ? locBits.join(' / ') : '未知（可拿 IP 另行查詢）';
+        return `<div class="waitlist-row">
+          <div class="wname">${label}</div>
+          <div>時間：${time}</div>
+          <div>來源 IP：${l.ip || 'unknown'}</div>
+          <div>推測位置：${loc}</div>
+          ${l.authEmail ? `<div>操作帳號：${l.authEmail}</div>` : ''}
+          <div style="color:var(--ink-faint); word-break:break-all;">UA：${l.userAgent || 'unknown'}</div>
+        </div>`;
+      }).join('')}
+    `;
   }
 
   return `<div class="content">
@@ -760,6 +811,7 @@ function renderAdmin(){
     <div class="tab-row">
       <div class="tab-btn ${state.adminTab==='slots'?'active':''}" data-tab="slots">時段管理</div>
       <div class="tab-btn ${state.adminTab==='waitlist'?'active':''}" data-tab="waitlist">候補名單（${waitlist.length}）</div>
+      <div class="tab-btn ${state.adminTab==='audit'?'active':''}" data-tab="audit">稽核紀錄</div>
     </div>
     ${tabContent}
   </div>`;
@@ -1066,7 +1118,14 @@ function bindAdminEvents(){
   };
 
   document.querySelectorAll('.tab-btn').forEach(el=>{
-    el.onclick = ()=>{ state.adminTab = el.getAttribute('data-tab'); render(); };
+    el.onclick = async ()=>{
+      const tab = el.getAttribute('data-tab');
+      state.adminTab = tab;
+      if(tab === 'audit'){
+        await loadAuditLogs();
+      }
+      render();
+    };
   });
 
   if(state.adminTab==='slots'){
