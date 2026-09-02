@@ -16,10 +16,13 @@ ei-booking/
 ├── index.html          ← 給 Vercel 用（放在根目錄，Vercel 會自動偵測）
 ├── public/
 │   └── index.html      ← 給 Firebase Hosting 用（內容與上面完全相同）
-├── firebase.json        ← Firebase Hosting 設定
+├── functions/
+│   ├── index.js          ← Cloud Functions 中介層程式碼（所有病患資料存取都在這裡）
+│   └── package.json       ← functions 的相依套件設定
+├── firebase.json        ← Firebase Hosting + Functions 設定
 ├── .firebaserc           ← Firebase 專案 ID
-├── firestore.rules       ← Firestore 資料庫存取規則（公開時段/私密病患資料分離，請詳讀）
-├── migrate-old-data.js    ← 選用：把舊版資料搬到新架構的一次性腳本
+├── firestore.rules       ← Firestore 資料庫存取規則
+├── migrate-old-data.js    ← 選用：把更早期版本的資料搬到新架構的腳本
 ├── vercel.json              ← Vercel 設定
 ├── .gitignore                ← 排除不需要進版控的暫存檔案
 └── README.md                  ← 本說明檔
@@ -55,7 +58,16 @@ const firebaseConfig = {
 別忘了到 [Firebase Console](https://console.firebase.google.com) 確認該專案的
 Firestore Database 已經啟用（左側選單「建構」→「Firestore Database」）。
 
-## 第 2 步：安裝工具並登入
+## 第 2 步：升級 Firebase 專案為 Blaze 方案（Cloud Functions 必要條件）
+
+Cloud Functions 是 Google 要求一定要開通「Blaze（用量計費）方案」才能使用的功能，
+即使實際用量在免費額度內、帳單金額是 0 元，也需要先綁定一組付款方式。
+
+1. 前往 https://console.firebase.google.com ，選擇 `ei-booking` 專案
+2. 左下角「升級」（Upgrade）或專案設定裡的方案頁面，選擇 **Blaze**
+3. 依指示綁定信用卡等付款方式（一般小型診所的使用量，帳單金額通常是 $0）
+
+## 第 3 步：安裝工具、登入、安裝 functions 套件
 
 在電腦的終端機（Terminal / 命令提示字元）安裝部署工具：
 
@@ -67,21 +79,46 @@ vercel login
 
 這兩行都會開啟瀏覽器讓你用 Google 帳號登入授權。
 
-## 第 3 步：部署到 Firebase Hosting + Firestore 規則
+接著安裝 Cloud Functions 需要的套件（只需要做一次）：
+
+```bash
+cd ei-booking/functions
+npm install
+cd ..
+```
+
+## 第 4 步：註冊 Firebase App Check（防止非本站的自動化請求）
+
+1. 前往 Firebase Console → 左側選單「建構」→「App Check」
+2. 點「開始使用」，找到你的 Web 應用程式，點「註冊」
+3. Provider 選擇 **reCAPTCHA v3**，會需要你去
+   https://www.google.com/recaptcha/admin/create 建立一組 reCAPTCHA v3 的
+   Site Key（網域填你之後會用到的網址，例如 `ei-booking.web.app`、
+   `ei-booking.vercel.app`，兩個都要加，之後有新網域也記得回來加）
+4. 拿到 Site Key 後，打開 `index.html` **和** `public/index.html`，
+   找到這一行，把 `REPLACE_WITH_YOUR_RECAPTCHA_V3_SITE_KEY` 換成你的 Site Key
+   （兩份檔案都要改，內容要一致）：
+   ```js
+   const RECAPTCHA_V3_SITE_KEY = "REPLACE_WITH_YOUR_RECAPTCHA_V3_SITE_KEY";
+   ```
+5. **先不要急著開「強制」**：App Check 畫面上有個 Enforce（強制）開關，
+   剛啟用時建議先保持「監控中／未強制」，觀察幾天確認網站功能都正常、
+   Console 裡看得到合法的請求流量後，再回來把 Firestore 和 Cloud Functions
+   這兩個項目的 Enforce 打開。
+
+## 第 5 步：部署到 Firebase Hosting + Firestore 規則 + Cloud Functions
 
 在 `ei-booking` 資料夾中執行：
 
 ```bash
 cd ei-booking
-firebase deploy --only hosting,firestore:rules
+firebase deploy --only hosting,firestore:rules,functions
 ```
 
-完成後終端機會顯示一個 `https://你的專案.web.app` 網址，這就是 Firebase 版本的網站。
+第一次部署 functions 可能需要幾分鐘。完成後終端機會顯示一個
+`https://你的專案.web.app` 網址，這就是 Firebase 版本的網站。
 
-⚠️ **這個專案已改用「公開時段資訊 / 私密病患資料分離」的架構**，部署後還需要完成
-兩個一次性設定，網站才會完全正常，請務必往下看完「資料架構更新後的必要設定」。
-
-## 第 4 步：部署到 Vercel
+## 第 6 步：部署到 Vercel
 
 同樣在 `ei-booking` 資料夾中執行：
 
@@ -92,40 +129,36 @@ vercel --prod
 第一次執行會問幾個問題（專案名稱、要不要連結既有專案等），
 直接按 Enter 用預設值即可。完成後會顯示一個 `https://你的專案.vercel.app` 網址。
 
-之後如果要更新網站內容，兩邊都各自重新執行一次
-`firebase deploy --only hosting` 和 `vercel --prod` 就可以了。
+之後如果要更新網站內容：
+- 只改了 `index.html`／`public/index.html` → `firebase deploy --only hosting` + `vercel --prod`
+- 改了 `functions/index.js` → 記得加上 `firebase deploy --only functions`
+- 改了 `firestore.rules` → 記得加上 `firebase deploy --only firestore:rules`
+- 三個都要更新，最簡單就是整串一起跑：
+  ```bash
+  firebase deploy --only hosting,firestore:rules,functions
+  vercel --prod
+  ```
 
 ---
 
-## 🔧 資料架構更新後的必要設定
+## 🔧 這個版本做了什麼（Cloud Functions 中介層架構）
 
-這個版本把資料庫拆成「公開的時段時間表」和「私密的病患資料」兩個部分，
-安全性比之前好很多，但需要完成以下設定網站才能正常運作：
+現在前端已經**完全不會直接讀寫**病患資料（姓名、生日、電話、主要問題）。
+所有涉及個資的操作，都改成呼叫 Cloud Functions（在 `functions/index.js` 裡），
+由伺服器端的程式碼驗證身分、檢查配額、確認管理員權限後才真正讀寫資料庫，
+Firestore 規則對這些 collection 直接設成「一律拒絕前端存取」。
+只有時段的公開時間表（`slots`，不含個資）還是前端直接讀取，維持速度與免費額度。
 
-### A. 建立 Firestore 索引（collectionGroup 查詢用）
+### 是否要搬移舊資料？
 
-後台「時段管理」頁面需要用到一種叫 collectionGroup 的查詢方式，橫跨所有病患資料。
-**第一次登入後台時，這個查詢通常會失敗一次**，並在瀏覽器主控台（F12 打開）
-印出一則錯誤訊息，裡面會附一個藍色連結，長得像：
+之前版本用的是 `clinicData`（單一 JSON blob）或 `patients/{雜湊}/bookings`
+這兩種架構，跟現在這版的 `slots` / `bookings` collection **不會自動互通**。
 
-```
-https://console.firebase.google.com/project/ei-booking/firestore/indexes?create_composite=...
-```
-
-**點那個連結**，會直接開啟 Firebase Console 並幫你把索引欄位都填好，
-按「建立索引」（Create Index），等 1-2 分鐘讓它建立完成，
-之後重新整理網站、重新登入後台，就會正常顯示了。
-
-### B. 是否要搬移舊資料？
-
-舊版用的是 `clinicData` 這個 collection（單一 JSON 檔案的存法），
-新版改用 `slots` / `patients` 這兩個 collection。**兩者不會自動互通**。
-
-- 如果目前資料庫裡都還是測試資料，**可以直接略過這步**，用新版重新開始即可
-  （舊資料留在 `clinicData` 裡不會被存取，之後想清理再手動去 Firebase Console 刪除即可）。
-- 如果有需要保留的真實預約資料，這個資料夾裡有一個 `migrate-old-data.js`，
-  打開它、照裡面的說明操作（登入後台後貼到瀏覽器 Console 執行一次）即可搬移。
-
+- 如果目前資料庫裡都還是測試資料，**可以直接略過這步**，用新版重新開始即可。
+- 如果有想保留的真實預約資料，需要手動搬移；這個資料夾裡的
+  `migrate-old-data.js` 是針對「上一版」（patients/雜湊架構）寫的，
+  如果你是從那個版本升級上來、且有真實資料要保留，跟我說一聲，
+  我可以幫你寫一個對應現在這版架構的搬移腳本。
 
 
 ## 推上 GitHub
@@ -174,41 +207,34 @@ git push -u origin main
 
 ## ⚠️ 關於資料安全（重要，請務必看過）
 
-這個版本已經做了兩項重要的安全升級：
+這個版本已經完成三項重要的安全升級：
 
-1. **後台登入改用 Firebase Authentication**（真正的帳號密碼驗證，不是寫死在程式碼裡的密碼）
-2. **資料庫拆成「公開時段」與「私密病患資料」兩個部分**：
-   - `slots`（時段時間表）任何人都能看到，但**不含任何病患個資**
-   - `patients/{電話雜湊}/bookings`（病患資料）依電話號碼分區存放，
-     一般訪客隨意打開 Firestore，**不會再看到全部病患的名單一次列出來**
-   - 後台完整病患清單，只有登入的管理員才能讀取
+1. **後台登入用 Firebase Authentication**：真正的帳號密碼驗證，不是寫死在程式碼裡的密碼
+2. **Cloud Functions 中介層**：前端完全不會直接讀寫病患資料，所有涉及個資的操作
+   （預約、查詢、取消、後台管理）都經過伺服器端程式碼驗證身分與權限後才執行，
+   Firestore 對 `bookings`／`waitlist`／`templateMeta` 這幾個 collection
+   直接設成「拒絕前端存取」——就算有人繞過網站畫面、直接打開瀏覽器主控台
+   呼叫 Firestore API，也完全看不到、改不了任何病患資料
+3. **Firebase App Check**：確認呼叫 Cloud Functions／Firestore 的請求，
+   真的是來自你自己網站上跑的瀏覽器，能有效擋掉多數自動化腳本與機器人攻擊
 
-比起最早的版本（任何人一鍵就能看到所有小朋友的姓名、生日、電話），
-這已經是很大幅度的改善。但誠實地說，這**仍然不是最高等級的保護**：
+到這個階段，資料安全的等級已經相當紮實，不是「前端隨便防一下」的水準了。
+但仍然誠實補充兩個殘留的限制，讓你了解目前的邊界在哪：
 
-- 病患資料是用「知道電話號碼才能算出對應的存取路徑」來保護的，
-  對隨機路人、搜尋引擎、意外瀏覽已經足夠安全，但如果有心人士寫程式
-  暴力窮舉所有可能的台灣手機號碼組合，理論上仍有機會找到特定一筆資料
-  （只會拿到那一筆，不會拿到全部病患名單）
-- `slots` 時段的「開放↔已預約」狀態切換，目前仍允許未登入的使用者操作
-  （這是為了讓家長不需要註冊帳號就能自行預約/取消），
-  代表有心人士理論上可以惡意把時段亂標記成已預約，造成別人無法預約
-  （但看不到任何病患個資）
-
-如果之後要正式大量蒐集真實兒童與家長的個人資料，建議進一步加上：
-
-- **Firebase App Check**：限制只有你自己的網站網域能呼叫 Firestore，
-  能有效擋掉多數自動化腳本與機器人攻擊
-- **Cloud Functions 中介層**：讓所有讀寫都經過你自己寫的伺服器端程式碼驗證，
-  而不是前端直接讀寫資料庫，是目前業界最推薦的做法
-- 讓每位家長透過 **手機簡訊驗證碼（Firebase Phone Auth）** 登入後才能預約，
-  這樣就能確保「這支電話真的是本人在操作」
-
-如果你想要，都可以再回來請我協助升級。
+- 家長查詢／取消自己的預約，是用「電話 + 生日是否吻合」來確認身分，
+  而不是真正登入帳號。這代表如果有人剛好知道某位家長的電話和孩子生日
+  （例如認識的親友），理論上可以用網站畫面查到、甚至取消那筆預約。
+  如果需要更強的保護，可以加上簡訊驗證碼（Firebase Phone Auth），
+  讓家長真正「登入」後才能操作，之後有需要可以再回來加。
+- `slots`（時段時間表）本身仍是任何人都能讀取的公開資料（不含個資），
+  這是刻意設計，讓家長瀏覽可預約時段不需要每次都呼叫 Cloud Function、
+  節省成本與速度；如果之後想連時段時間表都不公開瀏覽，也可以改。
 
 補充：`firebaseConfig` 裡的 `apiKey` 等設定值**不是密碼**，Google 官方
 文件也說明這些值本來就會出現在前端程式碼中、可以安全地放進公開的
-GitHub repo，真正的存取控制是靠 `firestore.rules`。但如果你日後加上任何
-真正的密鑰或服務帳號金鑰，記得改放進有加進 `.gitignore` 的檔案，
-不要一起 commit 上去。
+GitHub repo，真正的存取控制是靠 `firestore.rules` 與 Cloud Functions
+的權限檢查。但 `functions/` 資料夾如果之後有任何第三方服務的 API 金鑰，
+建議改用 `firebase functions:secrets:set` 設定，不要直接寫進程式碼或
+commit 上 GitHub。
+
 

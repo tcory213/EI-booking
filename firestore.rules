@@ -1,34 +1,25 @@
 rules_version = '2';
 
 // ============================================================
-// 資料架構說明
+// 資料架構說明（Cloud Functions 中介層版本）
 // ============================================================
 // slots/{slotId}
 //   → 公開資料：只有 date, time, note, status, source 欄位，完全不含任何病患個資。
-//     任何人都可以讀取（顯示可預約時段），但只有：
-//       (a) 已登入的管理員 可以新增/刪除時段
-//       (b) 「開放中→已預約」或「已預約→開放中」的狀態切換
-//           （且必須保證 date/time/note/source 都沒被更動）可以在未登入時進行，
-//           這是為了讓家長可以自行完成預約與取消，不需要註冊帳號。
+//     任何人都可以直接讀取（顯示可預約時段）。
+//     新增/刪除/狀態變更（開放↔已預約）一律只能透過 Cloud Functions
+//     （bookSlot / cancelMyBooking / adminAddSlot / adminDeleteSlot / adminCancelBooking...）
+//     完成，前端不再直接寫入這個 collection，所以這裡的 write 規則只保留給
+//     已登入的管理員作為備援／除錯用途，Cloud Functions 用的是 Admin SDK，
+//     不受這裡的規則限制。
 //
-// patients/{phoneHash}/bookings/{bookingId}
-//   → 私密資料：兒童姓名、生日、電話、主要問題等。
-//     phoneHash 是電話號碼經過雜湊運算後的代號，不是電話本身。
-//     只有「算得出同一組雜湊值的人」（也就是知道這支電話號碼的人）才能讀寫這個路徑，
-//     一般訪客隨意瀏覽 Firestore 並無法列出或猜出其他人的完整清單。
-//     這不是強加密驗證，仍有電話號碼被暴力破解猜測的理論風險，
-//     如需更高等級的保護，建議加上 Firebase Auth 或後端函式。
+// bookings/{bookingId}、waitlist/{entryId}、templateMeta/{docId}
+//   → 全部是私密資料或內部設定，一律拒絕前端直接讀寫。
+//     所有存取都必須經過 Cloud Functions，由伺服器端程式碼驗證身分
+//     （電話+生日核對）與管理員權限（Firebase Authentication 已登入）後才能操作。
+//     這是目前最高等級的保護：資料庫本身完全不接受前端直接連線。
 //
-// {any}/bookings/{bookingId}（collection group）
-//   → 只有已登入的管理員，才能用 collectionGroup 查詢橫跨所有病患的完整預約清單，
-//     這是後台「時段管理」頁面顯示病患資料、以及候補名單統計所需要的權限。
-//
-// waitlist/{entryId}
-//   → 候補登記：任何人都能送出候補登記（不需登入），
-//     但完整候補名單只有登入的管理員能讀取／處理／刪除。
-//
-// templateMeta/{docId}
-//   → 後台內部設定（例如哪些固定時段被手動停開），僅供已登入管理員讀寫。
+// patients/{phoneHash}/bookings/{bookingId}（舊版）
+//   → 舊架構已不再使用，一併關閉存取。
 // ============================================================
 
 service cloud.firestore {
@@ -37,41 +28,25 @@ service cloud.firestore {
     // 公開的時段資訊：無病患個資
     match /slots/{slotId} {
       allow read: if true;
-      allow create, delete: if request.auth != null;
-      allow update: if request.auth != null || (
-        resource.data.date   == request.resource.data.date &&
-        resource.data.time   == request.resource.data.time &&
-        resource.data.note   == request.resource.data.note &&
-        resource.data.source == request.resource.data.source &&
-        resource.data.status != request.resource.data.status &&
-        (request.resource.data.status == 'open' || request.resource.data.status == 'booked')
-      );
+      allow write: if request.auth != null;
     }
 
-    // 病患個資：依「電話雜湊」分區存放
-    match /patients/{phoneHash}/bookings/{bookingId} {
-      allow read, create, update: if true;
-      allow delete: if request.auth != null;
+    // 病患個資與候補名單：完全交給 Cloud Functions 處理，前端一律拒絕
+    match /bookings/{bookingId} {
+      allow read, write: if false;
     }
-
-    // 讓已登入管理員可以用 collectionGroup 查詢，橫跨所有病患資料（後台顯示用）
-    match /{path=**}/bookings/{bookingId} {
-      allow read: if request.auth != null;
-    }
-
-    // 候補名單
     match /waitlist/{entryId} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow read, write: if false;
     }
-
-    // 固定時段相關內部設定（如已停開清單）
     match /templateMeta/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
 
-    // 舊版資料結構（單一 JSON blob）已停用，全面關閉存取，避免混用
+    // 舊版資料結構，全面關閉存取
     match /clinicData/{docId} {
+      allow read, write: if false;
+    }
+    match /patients/{phoneHash}/bookings/{bookingId} {
       allow read, write: if false;
     }
 

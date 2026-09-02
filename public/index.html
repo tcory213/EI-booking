@@ -10,6 +10,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check-compat.js"></script>
 <style>
   :root{
     --tiffany:#0ABAB5;
@@ -287,8 +289,21 @@ const firebaseConfig = {
   appId: "1:52050810041:web:f30dba6d6f856c1c14f768"
 };
 firebase.initializeApp(firebaseConfig);
+
+/* ============ APP CHECK 設定 ============ */
+/* 請至 Firebase 主控台 > App Check > 註冊你的網頁應用程式 (reCAPTCHA v3)，
+   取得 Site Key 後貼在這裡。設定好前，App Check 只會記錄不會擋任何請求。 */
+const RECAPTCHA_V3_SITE_KEY = "REPLACE_WITH_YOUR_RECAPTCHA_V3_SITE_KEY";
+if (RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY.indexOf('REPLACE_WITH') !== 0) {
+  firebase.appCheck().activate(
+    new firebase.appCheck.ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+    true // isTokenAutoRefreshEnabled
+  );
+}
+
 const db = firebase.firestore();
 const auth = firebase.auth();
+const fx = firebase.functions();
 
 /* ============ STATE ============ */
 
@@ -336,27 +351,12 @@ function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+90); return toL
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
 
-// 以電話號碼算出一組雜湊值，作為該病患私密資料在 Firestore 裡的分區代號。
-// 這不是完美的身分驗證（知道電話號碼理論上就能算出同一組雜湊值），
-// 但已經讓「打開瀏覽器就能看到全部病患資料」變成「需要知道特定電話號碼才能查到那一筆」，
-// 且後台的完整病患清單只有登入的管理員才能讀取（見 firestore.rules 說明）。
-async function sha256Hex(str){
-  const enc = new TextEncoder().encode(str);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-async function phoneHashOf(phone){
-  const h = await sha256Hex('ei-booking-v1:' + normPhone(phone));
-  return h.slice(0, 24);
-}
-
-// 系統自動計算：以「電話 + 生日」比對該病患名下的預約紀錄，算出已使用過的評估/門診次數
+// 系統自動計算：透過 Cloud Function 比對「電話 + 生日」，算出已使用過的評估/門診次數
+// （伺服器端執行，前端不再直接讀取病患資料）
 async function usedCountFor(phone, birth){
   try{
-    const hash = await phoneHashOf(phone);
-    const snap = await db.collection('patients').doc(hash).collection('bookings')
-      .where('birth','==',birth).where('status','==','active').get();
-    return snap.size;
+    const res = await fx.httpsCallable('checkQuota')({ phone, birth });
+    return res.data.used;
   }catch(e){ console.error(e); return 0; }
 }
 
@@ -418,73 +418,29 @@ async function loadSlots(){
   }catch(e){ console.error(e); slots = []; }
 }
 
-// 後台專用：載入候補名單、固定時段停開清單，並把每個時段對應的病患資料 join 進來
-// （collectionGroup 查詢需要管理員已登入，見 firestore.rules）
-async function loadAdminExtras(){
+// 後台專用：透過 Cloud Function 一次取回時段（含病患資料）、候補名單、固定時段停開清單
+// 病患個資完全不經過前端直接讀寫 Firestore，全部由伺服器端驗證身分後回傳
+async function loadAdminDashboard(){
   try{
-    const snap = await db.collection('waitlist').get();
-    waitlist = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  }catch(e){ console.error(e); waitlist = []; }
-  try{
-    const doc = await db.collection('templateMeta').doc('cancelledOcc').get();
-    cancelledOcc = doc.exists && doc.data().list ? doc.data().list : [];
-  }catch(e){ console.error(e); cancelledOcc = []; }
-  try{
-    const bkSnap = await db.collectionGroup('bookings').where('status','==','active').get();
-    const bySlot = {};
-    bkSnap.docs.forEach(d=>{
-      const b = d.data();
-      bySlot[b.slotId] = { ...b, _bookingId: d.id, _phoneHash: d.ref.parent.parent.id };
-    });
-    slots.forEach(s=>{
-      if(bySlot[s.id]) s.booking = bySlot[s.id];
-      else delete s.booking;
-    });
+    const res = await fx.httpsCallable('adminGetDashboardData')();
+    slots = res.data.slots;
+    waitlist = res.data.waitlist;
+    cancelledOcc = res.data.cancelledOcc;
   }catch(e){
     console.error(e);
-    showToast('讀取病患資料失敗（可能需要在 Firestore 建立索引，請見瀏覽器主控台的錯誤訊息與連結）');
+    showToast('讀取後台資料失敗，請確認已用管理員帳號登入');
   }
 }
 
-async function saveCancelled(){
-  try{ await db.collection('templateMeta').doc('cancelledOcc').set({ list: cancelledOcc }); }
-  catch(e){ console.error(e); showToast('資料儲存失敗，請重試'); }
-}
-
-// 依樣板自動補齊未來三個月內的固定時段（已被後台取消或已存在者不重複產生）
-// 注意：新增時段需要管理員權限，因此僅在後台登入時執行
-async function ensureTemplateSlots(){
-  const today = new Date(); today.setHours(0,0,0,0);
-  const toCreate = [];
-  for(let i=0; i<=90; i++){
-    const d = new Date(today); d.setDate(d.getDate()+i);
-    const dow = d.getDay();
-    const matches = SLOT_TEMPLATE.filter(t=>t.dow===dow);
-    if(matches.length===0) continue;
-    const dateStr = toLocalISODate(d);
-    matches.forEach(t=>{
-      const key = dateStr+'|'+t.time;
-      if(cancelledOcc.includes(key)) return;
-      const exists = slots.some(s=>s.date===dateStr && s.time===t.time);
-      if(!exists) toCreate.push({ date:dateStr, time:t.time, note:'', status:'open', source:'template' });
-    });
-  }
-  if(toCreate.length===0) return false;
+// 依樣板補齊未來三個月內的固定時段（伺服器端執行）
+async function regenerateTemplateOnServer(){
   try{
-    const batch = db.batch();
-    const newLocalItems = [];
-    toCreate.forEach(data=>{
-      const ref = db.collection('slots').doc();
-      batch.set(ref, data);
-      newLocalItems.push({ id: ref.id, ...data });
-    });
-    await batch.commit();
-    slots.push(...newLocalItems);
-    return true;
+    const res = await fx.httpsCallable('adminRegenerateTemplate')();
+    return res.data;
   }catch(e){
     console.error(e);
     showToast('產生固定時段失敗，請確認已用管理員帳號登入');
-    return false;
+    return { created: 0, deleted: 0 };
   }
 }
 
@@ -862,12 +818,12 @@ function render(){
   bindEvents();
 }
 
-// 進入後台：載入候補名單/病患資料，並嘗試補齊固定時段，完成後才顯示畫面
+// 進入後台：先確保固定時段補齊，再載入完整後台資料，完成後才顯示畫面
 async function enterAdmin(){
   state.view = 'admin';
   state.adminTab = 'slots';
-  await loadAdminExtras();
-  await ensureTemplateSlots();
+  await regenerateTemplateOnServer();
+  await loadAdminDashboard();
   render();
 }
 
@@ -995,34 +951,23 @@ function bindEvents(){
       toStep3.textContent = '處理中…';
       const f = state.form;
       try{
-        const hash = await phoneHashOf(f.phone);
-        const used = await usedCountFor(f.phone, f.birth);
-        const age = calcAge(f.birth);
-        const countLabel = '第 '+(used+1)+' 次（上限2次）';
-        const slotRef = db.collection('slots').doc(slot.id);
-        const bookingRef = db.collection('patients').doc(hash).collection('bookings').doc();
-        await db.runTransaction(async (tx)=>{
-          const freshSlot = await tx.get(slotRef);
-          if(!freshSlot.exists || freshSlot.data().status !== 'open'){
-            throw new Error('SLOT_TAKEN');
-          }
-          tx.update(slotRef, { status:'booked' });
-          tx.set(bookingRef, {
-            slotId: slot.id, name:f.name, birth:f.birth, age, phone:f.phone,
-            issue:f.issue, priorLabel:countLabel, status:'active', bookedAt: Date.now(),
-            date: slot.date, time: slot.time, note: slot.note || ''
-          });
+        const res = await fx.httpsCallable('bookSlot')({
+          slotId: slot.id, name:f.name, birth:f.birth, phone:f.phone, issue:f.issue
         });
         slot.status = 'booked';
-        state.bookingResult = { type:'booking', name:f.name, age, phone:f.phone, issue:f.issue, date:slot.date, time:slot.time, note:slot.note };
+        state.bookingResult = { type:'booking', ...res.data };
         state.patientStep = 3;
         render();
       }catch(e){
         console.error(e);
-        if(e.message==='SLOT_TAKEN'){
+        if(e.code === 'already-exists'){
           showToast('此時段已被預約，請重新選擇');
           await loadSlots();
           render();
+        } else if(e.code === 'failed-precondition'){
+          showToast(e.message || '此童已達預約次數上限');
+          toStep3.disabled = false;
+          toStep3.textContent = '確認預約時段';
         } else {
           showToast('預約失敗，請重試');
           toStep3.disabled = false;
@@ -1034,17 +979,13 @@ function bindEvents(){
     const submitWait = document.getElementById('submitWaitlistBtn');
     if(submitWait) submitWait.onclick = async ()=>{
       const f = state.form;
-      const age = calcAge(f.birth);
       submitWait.disabled = true;
       submitWait.textContent = '送出中…';
       try{
-        const used = await usedCountFor(f.phone, f.birth);
-        const countLabel = used>=2 ? '已達2次上限' : ('第 '+(used+1)+' 次（上限2次）');
-        await db.collection('waitlist').add({
-          name:f.name, birth:f.birth, age, phone:f.phone, issue:f.issue,
-          priorLabel:countLabel, submittedAt:Date.now()
+        const res = await fx.httpsCallable('submitWaitlist')({
+          name:f.name, birth:f.birth, phone:f.phone, issue:f.issue
         });
-        state.bookingResult = { type:'waitlist', name:f.name, age, phone:f.phone, issue:f.issue };
+        state.bookingResult = { type:'waitlist', ...res.data };
         state.patientStep = 3;
         render();
       }catch(e){
@@ -1085,14 +1026,8 @@ function bindLookupEvents(){
     searchBtn.disabled = true;
     searchBtn.textContent = '查詢中…';
     try{
-      const hash = await phoneHashOf(lk.phone);
-      const snap = await db.collection('patients').doc(hash).collection('bookings')
-        .where('birth','==',lk.birth).where('status','==','active').get();
-      const today = todayStr();
-      lk.results = snap.docs
-        .map(d=>({ id:d.id, ...d.data() }))
-        .filter(b=>b.date>=today)
-        .sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
+      const res = await fx.httpsCallable('lookupMyBookings')({ phone: lk.phone, birth: lk.birth });
+      lk.results = res.data.results;
       lk.searched = true;
     }catch(e){
       console.error(e);
@@ -1111,9 +1046,7 @@ function bindLookupEvents(){
       const booking = lk.results.find(b=>b.id===id);
       if(!booking) return;
       try{
-        const hash = await phoneHashOf(lk.phone);
-        await db.collection('patients').doc(hash).collection('bookings').doc(id).update({status:'cancelled'});
-        await db.collection('slots').doc(booking.slotId).update({status:'open'});
+        await fx.httpsCallable('cancelMyBooking')({ phone: lk.phone, birth: lk.birth, bookingId: id });
         showToast('已為您取消預約');
         lk.results = lk.results.filter(x=>x.id!==id);
         render();
@@ -1140,17 +1073,10 @@ function bindAdminEvents(){
     const regenBtn = document.getElementById('regenTemplateBtn');
     if(regenBtn) regenBtn.onclick = async ()=>{
       if(!confirm('確定要重新產生固定時段嗎？\n\n將會刪除「尚未被預約」的固定時段，並依樣板重新產生正確日期。\n已被預約的時段與手動加開的時段不會受影響。')) return;
-      const toDelete = slots.filter(s => s.source==='template' && s.status==='open');
       try{
-        if(toDelete.length > 0){
-          const batch = db.batch();
-          toDelete.forEach(s => batch.delete(db.collection('slots').doc(s.id)));
-          await batch.commit();
-          const delIds = new Set(toDelete.map(s=>s.id));
-          slots = slots.filter(s => !delIds.has(s.id));
-        }
-        const changed = await ensureTemplateSlots();
-        showToast(changed ? '已重新產生固定時段' : '固定時段已是最新狀態');
+        const res = await regenerateTemplateOnServer();
+        await loadAdminDashboard();
+        showToast(res.created > 0 ? `已重新產生固定時段（新增 ${res.created} 筆）` : '固定時段已是最新狀態');
         render();
       }catch(e){
         console.error(e);
@@ -1170,11 +1096,9 @@ function bindAdminEvents(){
       const ns = state.newSlot;
       if(!ns.date){ showToast('請選擇日期'); return; }
       if(!/^\d{1,2}:\d{2}$/.test(ns.time.trim())){ showToast('請輸入正確時間格式，例如 09:30'); return; }
-      const timeNorm = ns.time.trim().padStart(5,'0');
-      const data = { date:ns.date, time:timeNorm, note:ns.note.trim(), status:'open', source:'manual' };
       try{
-        const ref = await db.collection('slots').add(data);
-        slots.push({ id: ref.id, ...data });
+        const res = await fx.httpsCallable('adminAddSlot')({ date: ns.date, time: ns.time.trim(), note: ns.note.trim() });
+        slots.push(res.data);
         state.newSlot = { date:'', time:'', note:'' };
         showToast('已新增時段');
         render();
@@ -1187,17 +1111,9 @@ function bindAdminEvents(){
     document.querySelectorAll('[data-delete-slot]').forEach(el=>{
       el.onclick = async ()=>{
         const id = el.getAttribute('data-delete-slot');
-        const target = slots.find(s=>s.id===id);
         if(!confirm('確定要刪除此時段嗎？')) return;
         try{
-          await db.collection('slots').doc(id).delete();
-          if(target && target.source==='template'){
-            const key = target.date+'|'+target.time;
-            if(!cancelledOcc.includes(key)){
-              cancelledOcc.push(key);
-              await saveCancelled();
-            }
-          }
+          await fx.httpsCallable('adminDeleteSlot')({ slotId: id });
           slots = slots.filter(s=>s.id!==id);
           showToast('已刪除時段');
           render();
@@ -1213,11 +1129,7 @@ function bindAdminEvents(){
         const slot = slots.find(x=>x.id===id);
         if(!confirm('確定要取消此預約嗎？時段將釋出供其他人預約，請記得電話通知候補名單。')) return;
         try{
-          if(slot && slot.booking){
-            await db.collection('patients').doc(slot.booking._phoneHash)
-              .collection('bookings').doc(slot.booking._bookingId).update({status:'cancelled'});
-          }
-          await db.collection('slots').doc(id).update({status:'open'});
+          await fx.httpsCallable('adminCancelBooking')({ slotId: id });
           if(slot){ slot.status='open'; delete slot.booking; }
           showToast('已取消預約，時段已釋出');
           render();
@@ -1230,11 +1142,11 @@ function bindAdminEvents(){
     document.querySelectorAll('[data-restore-occ]').forEach(el=>{
       el.onclick = async ()=>{
         const key = el.getAttribute('data-restore-occ');
-        cancelledOcc = cancelledOcc.filter(k=>k!==key);
         try{
-          await saveCancelled();
-          const changed = await ensureTemplateSlots();
-          showToast(changed ? '已恢復開放此時段' : '此時段目前已是開放狀態');
+          await fx.httpsCallable('adminRestoreOccurrence')({ key });
+          const res = await regenerateTemplateOnServer();
+          await loadAdminDashboard();
+          showToast(res.created > 0 ? '已恢復開放此時段' : '此時段目前已是開放狀態');
           render();
         }catch(e){
           console.error(e);
@@ -1247,7 +1159,7 @@ function bindAdminEvents(){
       el.onclick = async ()=>{
         const id = el.getAttribute('data-remove-wait');
         try{
-          await db.collection('waitlist').doc(id).delete();
+          await fx.httpsCallable('adminRemoveWaitlistEntry')({ entryId: id });
           waitlist = waitlist.filter(w=>w.id!==id);
           render();
         }catch(e){

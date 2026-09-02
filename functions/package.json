@@ -1,0 +1,13 @@
+{
+  "name": "ei-booking-functions",
+  "description": "EI Booking Cloud Functions middleware",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^5.0.0"
+  },
+  "private": true
+}
