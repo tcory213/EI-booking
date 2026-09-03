@@ -978,6 +978,9 @@ function bindEvents(){
       state.selectedSlotId = null;
       state.patientStep = 2;
       render();
+      // 進到選時段畫面後，在背景重新抓最新的時段資料，
+      // 避免顯示到「其實已經被別人訂走」的舊快照（純Firestore讀取，很快，不會卡畫面）。
+      loadSlots().then(()=>{ if(state.patientStep===2) render(); });
     };
   }
 
