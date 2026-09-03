@@ -872,13 +872,19 @@ function render(){
   bindEvents();
 }
 
-// 進入後台：先確保固定時段補齊，再載入完整後台資料，完成後才顯示畫面
+// 進入後台：先載入資料立刻顯示畫面（不讓使用者等），
+// 「補齊固定時段」改成背景執行，若真的有新增才悄悄重新整理畫面，
+// 這樣登入後只需要等一次 Cloud Function 往返，而不是兩次。
 async function enterAdmin(){
   state.view = 'admin';
   state.adminTab = 'slots';
-  await regenerateTemplateOnServer();
   await loadAdminDashboard();
   render();
+  regenerateTemplateOnServer().then(res=>{
+    if(res && res.created > 0){
+      loadAdminDashboard().then(render);
+    }
+  });
 }
 
 /* ============ EVENT BINDING ============ */
