@@ -312,6 +312,7 @@ let slots = [];       // 公開資料：時段列表 (date/time/note/status/sour
 let waitlist = [];    // 私密資料：候補名單，僅後台登入後才會載入
 let cancelledOcc = [];   // 已被後台取消的「固定時段」單次紀錄 (格式: "YYYY-MM-DD|HH:MM")，僅後台使用
 let auditLogs = [];   // 稽核紀錄，僅後台登入後才會載入
+let adminLoading = false; // 後台資料是否正在載入中
 let dataLoaded = false;
 
 const AUDIT_ACTION_LABELS = {
@@ -711,6 +712,14 @@ function renderAdminLogin(){
 
 /* ============ RENDER: ADMIN DASHBOARD ============ */
 function renderAdmin(){
+  if(adminLoading){
+    return `<div class="content">
+      <div class="admin-header">
+        <div class="atitle">院所後台管理</div>
+      </div>
+      <div class="loading-wrap">後台資料載入中…</div>
+    </div>`;
+  }
   const today = todayStr();
   const upcoming = slots.filter(s=>s.date>=today).sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
 
@@ -863,14 +872,16 @@ function render(){
   bindEvents();
 }
 
-// 進入後台：先載入資料立刻顯示畫面（不讓使用者等），
-// 「補齊固定時段」改成背景執行，若真的有新增才悄悄重新整理畫面，
-// 這樣登入後只需要等一次 Cloud Function 往返，而不是兩次。
+// 進入後台：先立刻顯示後台畫面框架（帶「載入中」），不讓使用者等。
+// 資料到了之後再填入畫面，「補齊固定時段」繼續在背景執行。
 async function enterAdmin(){
   state.view = 'admin';
   state.adminTab = 'slots';
+  adminLoading = true;
+  render(); // ← 這裡馬上切到後台畫面，顯示「載入中」
   await loadAdminDashboard();
-  render();
+  adminLoading = false;
+  render(); // ← 資料到了，重新畫一次填入真正的時段/候補內容
   regenerateTemplateOnServer().then(res=>{
     if(res && res.created > 0){
       loadAdminDashboard().then(render);
@@ -881,11 +892,11 @@ async function enterAdmin(){
 /* ============ EVENT BINDING ============ */
 function bindEvents(){
   const gearBtn = document.getElementById('gearBtn');
-  if(gearBtn) gearBtn.onclick = async ()=>{
+  if(gearBtn) gearBtn.onclick = ()=>{
     if(state.view==='admin'){ /* already in admin */ return; }
     if(auth.currentUser){
       // 已透過 Firebase Authentication 登入過，直接進入後台
-      await enterAdmin();
+      enterAdmin();
     } else {
       state.showAdminLogin = true; render();
     }
@@ -910,7 +921,7 @@ function bindEvents(){
     try{
       await auth.signInWithEmailAndPassword(ADMIN_EMAIL, pass);
       state.showAdminLogin = false;
-      await enterAdmin();
+      enterAdmin();
     }catch(e){
       console.error(e);
       errEl.textContent = '密碼錯誤，請再試一次';
