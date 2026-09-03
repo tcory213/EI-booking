@@ -42,10 +42,13 @@ function calcAgeLabel(birthStr){
   return Math.floor(m / 12) + '歲' + (m % 12) + '個月';
 }
 
-async function countActiveBookings(phone, birth){
-  const np = normPhone(phone);
+// 姓名比對用：去除頭尾空白，統一比較基準
+function normName(n){ return String(n || '').trim(); }
+
+async function countActiveBookings(name, birth){
+  const nm = normName(name);
   const snap = await db.collection('bookings')
-    .where('phoneNorm', '==', np)
+    .where('name', '==', nm)
     .where('birth', '==', birth)
     .where('status', '==', 'active')
     .get();
@@ -127,14 +130,14 @@ async function logAudit(context, action, extra){
  * 家長端功能
  * ============================================================ */
 
-// 查詢某個孩子（電話+生日）已使用過幾次評估/門診機會
+// 查詢某個孩子（姓名+生日）已使用過幾次評估/門診機會
 exports.checkQuota = functions.https.onCall(async (data, context) => {
   await logAudit(context, 'checkQuota', {});
-  const { phone, birth } = data || {};
-  if (!phone || !birth) {
+  const { name, birth } = data || {};
+  if (!name || !birth) {
     throw new functions.https.HttpsError('invalid-argument', '缺少必要參數');
   }
-  const used = await countActiveBookings(phone, birth);
+  const used = await countActiveBookings(name, birth);
   return { used };
 });
 
@@ -148,7 +151,7 @@ exports.bookSlot = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('invalid-argument', '缺少時段資訊');
   }
 
-  const used = await countActiveBookings(phone, birth);
+  const used = await countActiveBookings(name, birth);
   if (used >= 2) {
     throw new functions.https.HttpsError('failed-precondition', '此兒童已達兩次評估／門診機會上限，請改用候補登記。');
   }
@@ -182,7 +185,7 @@ exports.submitWaitlist = functions.https.onCall(async (data, context) => {
   await logAudit(context, 'submitWaitlist', {});
   validateBookingInput(data);
   const { name, birth, phone, issue } = data;
-  const used = await countActiveBookings(phone, birth);
+  const used = await countActiveBookings(name, birth);
   const priorLabel = used >= 2 ? '已達2次上限' : `第 ${used + 1} 次（上限2次）`;
   const age = calcAgeLabel(birth);
   await db.collection('waitlist').add({
@@ -191,9 +194,6 @@ exports.submitWaitlist = functions.https.onCall(async (data, context) => {
   });
   return { name, age, phone, issue };
 });
-
-// 姓名比對用：去除頭尾空白，統一比較基準
-function normName(n){ return String(n || '').trim(); }
 
 // 家長查詢自己的預約（用兒童全名+生日核對）
 exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
