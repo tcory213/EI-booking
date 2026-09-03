@@ -291,12 +291,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 
 /* ============ APP CHECK 設定 ============ */
-/* 請至 Firebase 主控台 > App Check > 註冊你的網頁應用程式 (reCAPTCHA v3)，
+/* 請至 Firebase 主控台 > App Check > 註冊你的網頁應用程式 (reCAPTCHA Enterprise，
+   舊版 reCAPTCHA v3 已被 Google 標示為淘汰，新註冊一律使用 Enterprise)，
    取得 Site Key 後貼在這裡。設定好前，App Check 只會記錄不會擋任何請求。 */
-const RECAPTCHA_V3_SITE_KEY = "REPLACE_WITH_YOUR_RECAPTCHA_V3_SITE_KEY";
-if (RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY.indexOf('REPLACE_WITH') !== 0) {
+const RECAPTCHA_ENTERPRISE_SITE_KEY = "REPLACE_WITH_YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY";
+if (RECAPTCHA_ENTERPRISE_SITE_KEY && RECAPTCHA_ENTERPRISE_SITE_KEY.indexOf('REPLACE_WITH') !== 0) {
   firebase.appCheck().activate(
-    new firebase.appCheck.ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+    new firebase.appCheck.ReCaptchaEnterpriseProvider(RECAPTCHA_ENTERPRISE_SITE_KEY),
     true // isTokenAutoRefreshEnabled
   );
 }

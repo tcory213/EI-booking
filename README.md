@@ -89,19 +89,24 @@ cd ..
 
 ## 第 4 步：註冊 Firebase App Check（防止非本站的自動化請求）
 
+⚠️ Google 已將舊版 reCAPTCHA v3 標示為淘汰，Firebase Console 現在會引導你
+改用 **reCAPTCHA Enterprise**（免費額度為每月 10,000 次評估，一般小型診所
+用量完全用不完）。
+
 1. 前往 Firebase Console → 左側選單「建構」→「App Check」
 2. 點「開始使用」，找到你的 Web 應用程式，點「註冊」
-3. Provider 選擇 **reCAPTCHA v3**，會需要你去
-   https://www.google.com/recaptcha/admin/create 建立一組 reCAPTCHA v3 的
-   Site Key（網域填你之後會用到的網址，例如 `ei-booking.web.app`、
-   `ei-booking.vercel.app`，兩個都要加，之後有新網域也記得回來加）
-4. 拿到 Site Key 後，打開 `index.html` **和** `public/index.html`，
-   找到這一行，把 `REPLACE_WITH_YOUR_RECAPTCHA_V3_SITE_KEY` 換成你的 Site Key
-   （兩份檔案都要改，內容要一致）：
+3. 這時會看到「reCAPTCHA Enterprise」和「reCAPTCHA」兩個選項，
+   **選「reCAPTCHA Enterprise」**（「reCAPTCHA」那個已淘汰，選了會出現警告）
+4. 依畫面引導操作（可能會要求先啟用 reCAPTCHA Enterprise API），
+   網域填 `ei-booking.web.app`、`ei-booking.firebaseapp.com`、
+   `ei-booking.vercel.app`，之後有新網域也記得回來加
+5. 完成後複製這組 **Site Key**，打開 `index.html` **和** `public/index.html`，
+   找到這一行，把 `REPLACE_WITH_YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY`
+   換成你的 Site Key（兩份檔案都要改，內容要一致）：
    ```js
-   const RECAPTCHA_V3_SITE_KEY = "REPLACE_WITH_YOUR_RECAPTCHA_V3_SITE_KEY";
+   const RECAPTCHA_ENTERPRISE_SITE_KEY = "REPLACE_WITH_YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY";
    ```
-5. **先不要急著開「強制」**：App Check 畫面上有個 Enforce（強制）開關，
+6. **先不要急著開「強制」**：App Check 畫面上有個 Enforce（強制）開關，
    剛啟用時建議先保持「監控中／未強制」，觀察幾天確認網站功能都正常、
    Console 裡看得到合法的請求流量後，再回來把 Firestore 和 Cloud Functions
    這兩個項目的 Enforce 打開。
