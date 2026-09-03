@@ -964,23 +964,39 @@ function bindEvents(){
       render();
     });
     const nextBtn = document.getElementById('toStep2Btn');
-    if(nextBtn) nextBtn.onclick = ()=>{
+    if(nextBtn) nextBtn.onclick = async ()=>{
       const f = state.form;
       if(!f.name.trim()){ showToast('請填寫兒童全名'); return; }
       if(!f.birth || !calcAge(f.birth)){ showToast('請選擇正確的兒童生日'); return; }
       if(isOverAgeLimit(f.birth)){ alert(AGE_LIMIT_MSG); return; }
       if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡電話'); return; }
       if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
-      // 配額是否超過改成留到「確認預約」當下才由伺服器驗證，這裡不再呼叫雲端函式，
-      // 讓下一步的畫面切換是即時的，不用等網路來回。
-      state.waitlistMode = false;
-      state.selectedDate = null;
-      state.selectedSlotId = null;
-      state.patientStep = 2;
-      render();
-      // 進到選時段畫面後，在背景重新抓最新的時段資料，
-      // 避免顯示到「其實已經被別人訂走」的舊快照（純Firestore讀取，很快，不會卡畫面）。
-      loadSlots().then(()=>{ if(state.patientStep===2) render(); });
+      nextBtn.disabled = true;
+      nextBtn.textContent = '確認中…';
+      try{
+        const res = await fx.httpsCallable('checkQuota')({ name: f.name, birth: f.birth });
+        const used = res.data.used;
+        if(used >= 2){
+          alert('很抱歉，這位孩子已達兩次評估／門診機會上限，將為您改為登記候補。');
+          state.waitlistMode = true;
+        } else {
+          state.waitlistMode = false;
+        }
+        state.selectedDate = null;
+        state.selectedSlotId = null;
+        state.patientStep = 2;
+        render();
+        // 進到選時段畫面後，在背景重新抓最新的時段資料，
+        // 避免顯示到「其實已經被別人訂走」的舊快照（純Firestore讀取，很快，不會卡畫面）。
+        if(!state.waitlistMode){
+          loadSlots().then(()=>{ if(state.patientStep===2) render(); });
+        }
+      }catch(e){
+        console.error(e);
+        showToast('系統忙碌中，請稍後再試');
+        nextBtn.disabled = false;
+        nextBtn.textContent = '下一步：選擇時段';
+      }
     };
   }
 
