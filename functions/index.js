@@ -142,7 +142,8 @@ exports.checkQuota = functions.https.onCall(async (data, context) => {
 exports.bookSlot = functions.https.onCall(async (data, context) => {
   await logAudit(context, 'bookSlot', { slotId: data && data.slotId });
   validateBookingInput(data);
-  const { slotId, name, birth, phone, issue } = data;
+  const { slotId, birth, phone, issue } = data;
+  const name = String(data.name).trim();
   if (!slotId) {
     throw new functions.https.HttpsError('invalid-argument', '缺少時段資訊');
   }
@@ -191,17 +192,20 @@ exports.submitWaitlist = functions.https.onCall(async (data, context) => {
   return { name, age, phone, issue };
 });
 
-// 家長查詢自己的預約（用電話+生日核對）
+// 姓名比對用：去除頭尾空白，統一比較基準
+function normName(n){ return String(n || '').trim(); }
+
+// 家長查詢自己的預約（用兒童全名+生日核對）
 exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
   await logAudit(context, 'lookupMyBookings', {});
-  const { phone, birth } = data || {};
-  if (!phone || !birth) {
-    throw new functions.https.HttpsError('invalid-argument', '請填寫聯絡電話與兒童生日');
+  const { name, birth } = data || {};
+  if (!name || !birth) {
+    throw new functions.https.HttpsError('invalid-argument', '請填寫兒童全名與生日');
   }
-  const np = normPhone(phone);
+  const nm = normName(name);
   const today = todayStrTW();
   const snap = await db.collection('bookings')
-    .where('phoneNorm', '==', np)
+    .where('name', '==', nm)
     .where('birth', '==', birth)
     .where('status', '==', 'active')
     .get();
@@ -212,11 +216,11 @@ exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
   return { results };
 });
 
-// 家長自行取消預約（同樣用電話+生日核對是否為本人）
+// 家長自行取消預約（同樣用兒童全名+生日核對是否為本人）
 exports.cancelMyBooking = functions.https.onCall(async (data, context) => {
-  const { phone, birth, bookingId } = data || {};
+  const { name, birth, bookingId } = data || {};
   await logAudit(context, 'cancelMyBooking', { bookingId });
-  if (!phone || !birth || !bookingId) {
+  if (!name || !birth || !bookingId) {
     throw new functions.https.HttpsError('invalid-argument', '缺少必要參數');
   }
   const bookingRef = db.collection('bookings').doc(bookingId);
@@ -226,8 +230,8 @@ exports.cancelMyBooking = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError('not-found', '找不到這筆預約');
     }
     const b = doc.data();
-    if (normPhone(b.phone) !== normPhone(phone) || b.birth !== birth) {
-      throw new functions.https.HttpsError('permission-denied', '電話或生日不符，無法取消');
+    if (normName(b.name) !== normName(name) || b.birth !== birth) {
+      throw new functions.https.HttpsError('permission-denied', '姓名或生日不符，無法取消');
     }
     if (b.status !== 'active') {
       throw new functions.https.HttpsError('failed-precondition', '此預約已非有效狀態');

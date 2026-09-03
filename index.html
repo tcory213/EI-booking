@@ -352,7 +352,7 @@ let state = {
   showAdminLogin: false,
   adminTab: 'slots',
   newSlot: { date:'', time:'', note:'' },
-  lookup: { phone:'', birth:'', results:[], searched:false },
+  lookup: { name:'', birth:'', results:[], searched:false },
 };
 
 /* ============ HELPERS ============ */
@@ -666,7 +666,7 @@ function renderLookup(){
   let resultsHtml = '';
   if(lk.searched){
     if(lk.results.length===0){
-      resultsHtml = `<div class="empty-state"><div class="emoji">🔍</div>查無符合的預約紀錄<br>請確認電話與生日是否正確</div>`;
+      resultsHtml = `<div class="empty-state"><div class="emoji">🔍</div>查無符合的預約紀錄<br>請確認姓名與生日是否正確</div>`;
     } else {
       resultsHtml = lk.results.map(b=>{
         const cancellable = b.date > todayStr();
@@ -675,6 +675,7 @@ function renderLookup(){
             <div class="dt">${fmtDateFull(b.date)}　${b.time}</div>
             <span class="badge badge-booked">已預約</span>
           </div>
+          <div class="note" style="margin-top:4px;">兒童姓名：<b style="color:var(--ink);">${b.name}</b>（${b.age||''}）</div>
           ${b.note ? `<div class="note">備註：${b.note}</div>` : ''}
           <div class="row-actions">
             ${cancellable
@@ -688,9 +689,9 @@ function renderLookup(){
   return `<div class="content">
     <div class="card">
       <div style="font-weight:800; font-size:15.5px; margin-bottom:4px;">查詢／取消我的預約</div>
-      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; line-height:1.6;">請輸入預約時填寫的聯絡電話與兒童生日進行查詢。如需取消，請於預約日期一日前線上取消；當日異動請直接致電本院。</div>
-      <label class="field-label" style="margin-top:10px;">聯絡電話</label>
-      <input type="tel" id="lk_phone" placeholder="請輸入預約時填寫的電話" value="${lk.phone}">
+      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; line-height:1.6;">請輸入預約時填寫的兒童全名與生日進行查詢。如需取消，請於預約日期一日前線上取消；當日異動請直接致電本院。</div>
+      <label class="field-label" style="margin-top:10px;">兒童全名</label>
+      <input type="text" id="lk_name" placeholder="請輸入預約時填寫的兒童全名" value="${lk.name}">
       <label class="field-label">兒童生日</label>
       <input type="date" id="lk_birth" max="${todayStr()}" value="${lk.birth}">
       <button class="btn btn-primary" id="lookupSearchBtn">查詢預約</button>
@@ -933,7 +934,7 @@ function bindEvents(){
 
   const gotoLookup = document.getElementById('gotoLookupBtn');
   if(gotoLookup) gotoLookup.onclick = ()=>{
-    state.lookup = { phone:'', birth:'', results:[], searched:false };
+    state.lookup = { name:'', birth:'', results:[], searched:false };
     state.view = 'lookup';
     render();
   };
@@ -1058,9 +1059,9 @@ function bindEvents(){
 }
 
 function bindLookupEvents(){
-  const phoneEl = document.getElementById('lk_phone');
+  const nameEl = document.getElementById('lk_name');
   const birthEl = document.getElementById('lk_birth');
-  if(phoneEl) phoneEl.addEventListener('input', e=>{ state.lookup.phone = e.target.value; });
+  if(nameEl) nameEl.addEventListener('input', e=>{ state.lookup.name = e.target.value; });
   if(birthEl) birthEl.addEventListener('change', e=>{ state.lookup.birth = e.target.value; });
 
   const backBtn = document.getElementById('backToBookBtn');
@@ -1069,12 +1070,12 @@ function bindLookupEvents(){
   const searchBtn = document.getElementById('lookupSearchBtn');
   if(searchBtn) searchBtn.onclick = async ()=>{
     const lk = state.lookup;
-    if(!lk.phone.trim()){ showToast('請填寫聯絡電話'); return; }
+    if(!lk.name.trim()){ showToast('請填寫兒童全名'); return; }
     if(!lk.birth){ showToast('請選擇兒童生日'); return; }
     searchBtn.disabled = true;
     searchBtn.textContent = '查詢中…';
     try{
-      const res = await fx.httpsCallable('lookupMyBookings')({ phone: lk.phone, birth: lk.birth });
+      const res = await fx.httpsCallable('lookupMyBookings')({ name: lk.name, birth: lk.birth });
       lk.results = res.data.results;
       lk.searched = true;
     }catch(e){
@@ -1094,7 +1095,7 @@ function bindLookupEvents(){
       const booking = lk.results.find(b=>b.id===id);
       if(!booking) return;
       try{
-        await fx.httpsCallable('cancelMyBooking')({ phone: lk.phone, birth: lk.birth, bookingId: id });
+        await fx.httpsCallable('cancelMyBooking')({ name: lk.name, birth: lk.birth, bookingId: id });
         showToast('已為您取消預約');
         lk.results = lk.results.filter(x=>x.id!==id);
         render();
