@@ -368,15 +368,6 @@ function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+90); return toL
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
 
-// 系統自動計算：透過 Cloud Function 比對「電話 + 生日」，算出已使用過的評估/門診次數
-// （伺服器端執行，前端不再直接讀取病患資料）
-async function usedCountFor(phone, birth){
-  try{
-    const res = await fx.httpsCallable('checkQuota')({ phone, birth });
-    return res.data.used;
-  }catch(e){ console.error(e); return 0; }
-}
-
 function calcAge(birthStr){
   if(!birthStr) return null;
   const b = new Date(birthStr+'T00:00:00');
@@ -962,28 +953,20 @@ function bindEvents(){
       render();
     });
     const nextBtn = document.getElementById('toStep2Btn');
-    if(nextBtn) nextBtn.onclick = async ()=>{
+    if(nextBtn) nextBtn.onclick = ()=>{
       const f = state.form;
       if(!f.name.trim()){ showToast('請填寫兒童全名'); return; }
       if(!f.birth || !calcAge(f.birth)){ showToast('請選擇正確的兒童生日'); return; }
       if(isOverAgeLimit(f.birth)){ alert(AGE_LIMIT_MSG); return; }
       if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡電話'); return; }
       if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
-      nextBtn.disabled = true;
-      nextBtn.textContent = '確認中…';
-      try{
-        const used = await usedCountFor(f.phone, f.birth);
-        state.waitlistMode = (used >= 2);
-        state.selectedDate = null;
-        state.selectedSlotId = null;
-        state.patientStep = 2;
-        render();
-      }catch(e){
-        console.error(e);
-        showToast('系統忙碌中，請稍後再試');
-        nextBtn.disabled = false;
-        nextBtn.textContent = '下一步：選擇時段';
-      }
+      // 配額是否超過改成留到「確認預約」當下才由伺服器驗證，這裡不再呼叫雲端函式，
+      // 讓下一步的畫面切換是即時的，不用等網路來回。
+      state.waitlistMode = false;
+      state.selectedDate = null;
+      state.selectedSlotId = null;
+      state.patientStep = 2;
+      render();
     };
   }
 
@@ -1019,8 +1002,14 @@ function bindEvents(){
           showToast('此時段已被預約，請重新選擇');
           await loadSlots();
           render();
+        } else if(e.code === 'failed-precondition' && (e.message || '').includes('上限')){
+          // 伺服器這時候才驗證出配額已滿：改切換到候補登記畫面，不用另外呼叫查詢配額的函式
+          showToast(e.message || '此童已達兩次評估／門診機會上限，已為您改為候補登記');
+          state.waitlistMode = true;
+          state.selectedSlotId = null;
+          render();
         } else if(e.code === 'failed-precondition'){
-          showToast(e.message || '此童已達預約次數上限');
+          showToast(e.message || '目前無法完成預約');
           toStep3.disabled = false;
           toStep3.textContent = '確認預約時段';
         } else {
