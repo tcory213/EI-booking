@@ -771,6 +771,7 @@ function renderAdmin(){
       sortedWait.map((w,i)=>`
       <div class="waitlist-row">
         <div class="wname">${i+1}. ${w.name}（${w.age}）</div>
+        <div>生日：${w.birth}</div>
         <div>電話：${w.phone}</div>
         <div>主要問題：${w.issue}</div>
         <div>累計次數：${w.priorLabel}</div>
@@ -808,7 +809,10 @@ function renderAdmin(){
   return `<div class="content">
     <div class="admin-header">
       <div class="atitle">院所後台管理</div>
-      <button class="btn btn-ghost btn-small" id="adminLogoutBtn">登出</button>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-ghost btn-small" id="adminRefreshBtn">🔄 重新整理</button>
+        <button class="btn btn-ghost btn-small" id="adminLogoutBtn">登出</button>
+      </div>
     </div>
     <div class="tab-row">
       <div class="tab-btn ${state.adminTab==='slots'?'active':''}" data-tab="slots">時段管理</div>
@@ -826,6 +830,7 @@ function renderSlotRow(s){
     const b = s.booking;
     patientBlock = `<div class="patient-info">
       <div><b>兒童：</b>${b.name}（${b.age}）</div>
+      <div><b>生日：</b>${b.birth}</div>
       <div><b>電話：</b>${b.phone}</div>
       <div><b>主要問題：</b>${b.issue}</div>
       <div><b>累計次數：</b>${b.priorLabel}</div>
@@ -1124,6 +1129,19 @@ function bindAdminEvents(){
   if(logoutBtn) logoutBtn.onclick = async ()=>{
     await auth.signOut();
     state.view='patient'; state.patientStep=1; render();
+  };
+
+  const refreshBtn = document.getElementById('adminRefreshBtn');
+  if(refreshBtn) refreshBtn.onclick = async ()=>{
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = '🔄 更新中…';
+    if(state.adminTab === 'audit'){
+      await loadAuditLogs();
+    } else {
+      await loadAdminDashboard();
+    }
+    showToast('已更新最新資料');
+    render();
   };
 
   document.querySelectorAll('.tab-btn').forEach(el=>{
