@@ -27,8 +27,8 @@ rules_version = '2';
 //
 // templateMeta/{docId} → 固定時段的內部設定（已停開清單），不含個資，需要登入才能讀寫。
 //
-// auditLogs/{logId} → 稽核紀錄，只有 Cloud Functions（Admin SDK）能寫入，
-//   前端一律拒絕直接讀寫，管理員需透過 adminGetAuditLogs 這支 Cloud Function 讀取。
+// auditLogs/{logId} → 稽核紀錄，只有 Cloud Functions（Admin SDK）能寫入（避免有人
+//   竄改或偽造紀錄），已登入管理員可以直接讀取（不需要再經過 Cloud Function）。
 // ============================================================
 
 service cloud.firestore {
@@ -71,7 +71,8 @@ service cloud.firestore {
     }
 
     match /auditLogs/{logId} {
-      allow read, write: if false;
+      allow read: if request.auth != null;
+      allow write: if false;
     }
 
     // 舊版資料結構，全面關閉存取

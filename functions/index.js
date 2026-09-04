@@ -42,12 +42,6 @@ async function countActiveBookings(name, birth){
   return snap.size;
 }
 
-function requireAuth(context){
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', '請先登入管理員帳號');
-  }
-}
-
 /* ============================================================
  * 稽核紀錄 (Audit Log)
  * ============================================================ */
@@ -112,45 +106,6 @@ exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
     .filter(b => b.date >= today)
     .sort((a, b) => a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
   return { results };
-});
-
-/* ============================================================
- * 後台管理：讀取全部資料（保留在 Cloud Functions，需已登入）
- * ============================================================ */
-
-exports.adminGetDashboardData = functions.https.onCall(async (data, context) => {
-  requireAuth(context);
-  await logAudit(context, 'adminGetDashboardData', {});
-  const [slotsSnap, waitSnap, tplSnap, bookSnap] = await Promise.all([
-    db.collection('slots').get(),
-    db.collection('waitlist').get(),
-    db.collection('templateMeta').doc('cancelledOcc').get(),
-    db.collection('bookings').where('status', '==', 'active').get(),
-  ]);
-  const bookingBySlot = {};
-  bookSnap.docs.forEach(d => {
-    const b = d.data();
-    bookingBySlot[b.slotId] = { ...b, _bookingId: d.id };
-  });
-  const slots = slotsSnap.docs.map(d => {
-    const s = { id: d.id, ...d.data() };
-    if (bookingBySlot[s.id]) s.booking = bookingBySlot[s.id];
-    return s;
-  });
-  const waitlist = waitSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const cancelledOcc = (tplSnap.exists && tplSnap.data().list) ? tplSnap.data().list : [];
-  return { slots, waitlist, cancelledOcc };
-});
-
-exports.adminGetAuditLogs = functions.https.onCall(async (data, context) => {
-  requireAuth(context);
-  const limit = Math.min(Math.max(parseInt((data && data.limit) || 200, 10) || 200, 1), 500);
-  const snap = await db.collection('auditLogs')
-    .orderBy('ts', 'desc')
-    .limit(limit)
-    .get();
-  const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  return { logs };
 });
 
 /* ============================================================

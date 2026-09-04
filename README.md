@@ -150,14 +150,18 @@ vercel --prod
 
 依照「不能讓外人取得非特定人士個資，但不太在意違規寫入/刪除（靠每日備份因應）」
 這個原則，重新檢視了每一支 Cloud Function 是否真的需要保護，把 Cloud Functions
-從原本 12 支精簡到只剩 **5 支**：
+從原本 12 支精簡到只剩 **3 支**：
 
-**留在 Cloud Functions（涉及「讀取」他人資料，Firestore 規則沒辦法安全限制查詢範圍）**
+**留在 Cloud Functions（給「完全沒登入」的家長用，Firestore 規則沒辦法安全限制
+查詢範圍，只能在伺服器端程式碼裡控管要回傳什麼）**
 - `checkQuota`：查詢配額
 - `lookupMyBookings`：家長查詢自己的預約
-- `adminGetDashboardData`：後台讀取全部時段/病患/候補資料
-- `adminGetAuditLogs`：後台讀取稽核紀錄
 - `dailySlotRefresh`：每日排程，跟這次討論無關，維持不變
+
+**後台的兩支讀取（`adminGetDashboardData`、`adminGetAuditLogs`）也拿掉了**，
+因為後台使用者是「真的有登入 Firebase Auth」，不是完全匿名，Firestore 規則
+可以直接寫「已登入才能讀」（`allow read: if request.auth != null`）安全地做到
+一樣的保護，不需要額外經過 Cloud Function，登入後台的等待時間也會因此再縮短。
 
 **改成前端直接寫 Firestore（純寫入，不涉及讀取他人資料，速度更快，減少冷啟動延遲）**
 - 家長端：建立預約、送出候補登記、自行取消預約
@@ -185,11 +189,11 @@ Google 需要幫這個新專案啟用 Cloud Scheduler 相關 API，偶爾第一�
 
 ### 稽核紀錄（Audit Log）
 
-每一次呼叫 Cloud Function（家長預約、查詢、取消，或後台任何操作）都會自動
+每一次呼叫 Cloud Function（家長預約查詢、取消，或每日排程）都會自動
 記一筆到 `auditLogs`：時間、來源 IP、瀏覽器 User-Agent、若 Google 有附上國別
-資訊也會一併記下、若是管理員操作會記下是哪個帳號。這個 collection 前端完全
-無法直接讀寫，只有登入後台、點「稽核紀錄」分頁才看得到（呼叫
-`adminGetAuditLogs` 這支函式），目前顯示最近 200 筆。
+資訊也會一併記下、若是管理員操作會記下是哪個帳號。這個 collection 前端
+只有「已登入的管理員」能讀取，一般訪客完全無法直接讀寫，登入後台、點
+「稽核紀錄」分頁即可直接看到（不再經過 Cloud Function），目前顯示最近 200 筆。
 
 用途：萬一日後懷疑遭到入侵或有異常存取（例如短時間內大量查詢、或看到明顯
 不像正常使用行為的紀錄），可以用這份紀錄裡的 IP 位址去查詢地理位置與歸屬
@@ -263,11 +267,13 @@ git push -u origin main
 
 **嚴格保護的部分（讀取，防止外人一次取得非特定人士的個資）：**
 1. **後台登入用 Firebase Authentication**：真正的帳號密碼驗證
-2. **查詢類操作維持 Cloud Functions**：`checkQuota`／`lookupMyBookings`／
-   `adminGetDashboardData`／`adminGetAuditLogs` 這四支都是「讀取」，
-   前端無法繞過畫面直接查詢，Firestore 對 `bookings`／`waitlist`／
-   `templateMeta`／`auditLogs` 這幾個 collection 的直接讀取一律拒絕
-3. **Firebase App Check**：確認請求真的來自你自己網站上跑的瀏覽器
+2. **家長端查詢類操作維持 Cloud Functions**：`checkQuota`／`lookupMyBookings`
+   這兩支給「完全沒登入」的家長用，前端無法繞過畫面直接查詢
+3. **後台讀取需要已登入**：後台看時段/病患/候補/稽核紀錄，都是直接讀
+   Firestore，但 `bookings`／`waitlist`／`templateMeta`／`auditLogs`
+   這幾個 collection 的規則都要求 `request.auth != null`，一般訪客
+   （沒登入）一律讀不到
+4. **Firebase App Check**：確認請求真的來自你自己網站上跑的瀏覽器
 
 **刻意放寬的部分（寫入，依你的要求，靠每日備份因應風險）：**
 - 家長建立自己的預約、送出候補登記、自行取消自己的預約 → 直接寫

@@ -427,14 +427,28 @@ async function loadSlots(){
   }catch(e){ console.error(e); slots = []; }
 }
 
-// 後台專用：透過 Cloud Function 一次取回時段（含病患資料）、候補名單、固定時段停開清單
-// 病患個資完全不經過前端直接讀寫 Firestore，全部由伺服器端驗證身分後回傳
+// 後台專用：直接讀取 Firestore（已登入管理員才有權限，見 firestore.rules），
+// 取回時段（含病患資料）、候補名單、固定時段停開清單，並在前端把資料 join 起來。
 async function loadAdminDashboard(){
   try{
-    const res = await fx.httpsCallable('adminGetDashboardData')();
-    slots = res.data.slots;
-    waitlist = res.data.waitlist;
-    cancelledOcc = res.data.cancelledOcc;
+    const [slotsSnap, waitSnap, tplSnap, bookSnap] = await Promise.all([
+      db.collection('slots').get(),
+      db.collection('waitlist').get(),
+      db.collection('templateMeta').doc('cancelledOcc').get(),
+      db.collection('bookings').where('status','==','active').get(),
+    ]);
+    const bookingBySlot = {};
+    bookSnap.docs.forEach(d=>{
+      const b = d.data();
+      bookingBySlot[b.slotId] = { ...b, _bookingId: d.id };
+    });
+    slots = slotsSnap.docs.map(d=>{
+      const s = { id: d.id, ...d.data() };
+      if(bookingBySlot[s.id]) s.booking = bookingBySlot[s.id];
+      return s;
+    });
+    waitlist = waitSnap.docs.map(d=>({ id: d.id, ...d.data() }));
+    cancelledOcc = (tplSnap.exists && tplSnap.data().list) ? tplSnap.data().list : [];
   }catch(e){
     console.error(e);
     showToast('讀取後台資料失敗，請確認已用管理員帳號登入');
@@ -442,10 +456,11 @@ async function loadAdminDashboard(){
 }
 
 // 載入稽核紀錄（僅後台，用於萬一懷疑遭入侵時佐證來源IP／是否來自境外）
+// 直接讀 Firestore（已登入管理員才有權限），不再經過 Cloud Function。
 async function loadAuditLogs(){
   try{
-    const res = await fx.httpsCallable('adminGetAuditLogs')({ limit: 200 });
-    auditLogs = res.data.logs;
+    const snap = await db.collection('auditLogs').orderBy('ts','desc').limit(200).get();
+    auditLogs = snap.docs.map(d=>({ id: d.id, ...d.data() }));
   }catch(e){
     console.error(e);
     showToast('讀取稽核紀錄失敗');
