@@ -427,6 +427,22 @@ async function loadSlots(){
   }catch(e){ console.error(e); slots = []; }
 }
 
+// 判斷這個錯誤是不是因為「其實沒有登入/登入已失效」造成的
+// （Firestore 規則要求已登入才能讀寫，沒登入時會回傳 permission-denied）
+function isAuthError(e){
+  return e && e.code === 'permission-denied';
+}
+
+// 登入已失效：跳出明確提示，並直接帶回登入畫面，不用使用者自己猜原因
+async function handleAuthExpired(){
+  showToast('登入已失效，請重新登入');
+  try{ await auth.signOut(); }catch(e){ console.error(e); }
+  state.view = 'patient';
+  state.patientStep = 1;
+  state.showAdminLogin = true;
+  render();
+}
+
 // 後台專用：直接讀取 Firestore（已登入管理員才有權限，見 firestore.rules），
 // 取回時段（含病患資料）、候補名單、固定時段停開清單，並在前端把資料 join 起來。
 async function loadAdminDashboard(){
@@ -451,6 +467,7 @@ async function loadAdminDashboard(){
     cancelledOcc = (tplSnap.exists && tplSnap.data().list) ? tplSnap.data().list : [];
   }catch(e){
     console.error(e);
+    if(isAuthError(e)){ await handleAuthExpired(); return; }
     showToast('讀取後台資料失敗，請確認已用管理員帳號登入');
   }
 }
@@ -463,6 +480,7 @@ async function loadAuditLogs(){
     auditLogs = snap.docs.map(d=>({ id: d.id, ...d.data() }));
   }catch(e){
     console.error(e);
+    if(isAuthError(e)){ await handleAuthExpired(); return; }
     showToast('讀取稽核紀錄失敗');
     auditLogs = [];
   }
@@ -1201,6 +1219,7 @@ function bindAdminEvents(){
         render();
       }catch(e){
         console.error(e);
+        if(isAuthError(e)){ await handleAuthExpired(); return; }
         showToast('新增失敗，請重試');
       }
     };
@@ -1230,6 +1249,7 @@ function bindAdminEvents(){
           render();
         }catch(e){
           console.error(e);
+          if(isAuthError(e)){ await handleAuthExpired(); return; }
           showToast('刪除失敗，請重試');
         }
       };
@@ -1249,6 +1269,7 @@ function bindAdminEvents(){
           render();
         }catch(e){
           console.error(e);
+          if(isAuthError(e)){ await handleAuthExpired(); return; }
           showToast('操作失敗，請重試');
         }
       };
@@ -1277,6 +1298,7 @@ function bindAdminEvents(){
           render();
         }catch(e){
           console.error(e);
+          if(isAuthError(e)){ await handleAuthExpired(); return; }
           showToast('操作失敗，請重試');
         }
       };
