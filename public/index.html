@@ -539,7 +539,7 @@ function renderStep1(){
       <div class="age-hint" id="ageHint" style="display:${f.birth && !isOverAgeLimit(f.birth) ? 'block':'none'}">目前年齡：${calcAge(f.birth)||''}</div>
       <div class="age-warning" id="ageWarning" style="display:${f.birth && isOverAgeLimit(f.birth) ? 'block':'none'}">⚠️ ${AGE_LIMIT_MSG}</div>
 
-      <label class="field-label">聯絡電話 <span class="req">*</span></label>
+      <label class="field-label">聯絡手機 <span class="req">*</span></label>
       <input type="tel" id="f_phone" placeholder="0912-345-678" value="${f.phone}">
 
       <label class="field-label">主要問題 <span class="req">*</span></label>
@@ -579,15 +579,15 @@ function renderStep2(){
   let body = '';
   if(goWaitlist){
     const reason = state.waitlistMode
-      ? '依規定，該童已達兩次評估／門診機會上限，僅能為您登記候補。若有預約個案臨時取消，本院將主動致電通知遞補。'
+      ? '為了讓更多孩子都有接受評估與門診的機會，每位孩童提供兩次預約機會。<br>目前此孩童已完成兩次預約，因此暫時無法直接選擇時段。<br><br>您可以先登記候補，若後續有其他家庭臨時取消、釋出名額，我們會依候補順序主動與您聯繫安排。<br><br>謝謝您的理解，也謝謝您一起讓醫療資源能更妥善地提供給需要的孩子。'
       : '目前暫無開放時段，將為您登記候補，待有時段開出將優先通知。';
     body = `
     <div class="card">
-      <div style="text-align:center; padding:6px 0 14px;">
+      <div style="text-align:center; padding:6px 0 12px;">
         <div style="font-size:34px;">📋</div>
         <div style="font-weight:800; font-size:15.5px; margin-top:6px;">登記候補通知</div>
-        <div style="font-size:13px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">${reason}</div>
       </div>
+      <div style="font-size:13px; color:var(--ink-soft); text-align:left; line-height:1.8; padding-bottom:4px;">${reason}</div>
       <button class="btn btn-primary" id="submitWaitlistBtn">送出候補登記</button>
       <button class="btn btn-ghost" id="backStep1Btn">返回上一步</button>
     </div>`;
@@ -631,7 +631,7 @@ function renderStep3(){
       <p>已收到 ${r.name} 的候補資料，若有時段開出或有個案臨時取消，本院將以電話 ${r.phone} 主動聯繫。</p>
       <div class="detail-row"><span class="k">兒童姓名</span><span class="v">${r.name}</span></div>
       <div class="detail-row"><span class="k">年齡</span><span class="v">${r.age}</span></div>
-      <div class="detail-row"><span class="k">聯絡電話</span><span class="v">${r.phone}</span></div>
+      <div class="detail-row"><span class="k">聯絡手機</span><span class="v">${r.phone}</span></div>
       <div class="detail-row"><span class="k">主要問題</span><span class="v">${r.issue}</span></div>
       <button class="btn btn-secondary" id="restartBtn">返回首頁</button>
     </div></div>`;
@@ -643,7 +643,7 @@ function renderStep3(){
     <div class="detail-row"><span class="k">年齡</span><span class="v">${r.age}</span></div>
     <div class="detail-row"><span class="k">預約日期</span><span class="v">${fmtDateFull(r.date)}</span></div>
     <div class="detail-row"><span class="k">報到時間</span><span class="v">${r.time}</span></div>
-    <div class="detail-row"><span class="k">聯絡電話</span><span class="v">${r.phone}</span></div>
+    <div class="detail-row"><span class="k">聯絡手機</span><span class="v">${r.phone}</span></div>
     <div class="detail-row"><span class="k">主要問題</span><span class="v">${r.issue}</span></div>
     ${r.note?`<div class="detail-row"><span class="k">備註</span><span class="v">${r.note}</span></div>`:''}
     <button class="btn btn-secondary" id="restartBtn">返回首頁</button>
@@ -974,7 +974,7 @@ function bindEvents(){
       if(!f.name.trim()){ showToast('請填寫兒童全名'); return; }
       if(!f.birth || !calcAge(f.birth)){ showToast('請選擇正確的兒童生日'); return; }
       if(isOverAgeLimit(f.birth)){ alert(AGE_LIMIT_MSG); return; }
-      if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡電話'); return; }
+      if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡手機'); return; }
       if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
       // 配額是否超過留到「確認預約」當下才由伺服器驗證，這裡不呼叫雲端函式，
       // 讓下一步的畫面切換是即時的，不用等網路來回。
@@ -1026,7 +1026,7 @@ function bindEvents(){
           render();
         } else if(code === 'functions/failed-precondition' && (e.message || '').includes('上限')){
           // 伺服器這時候才驗證出配額已滿：跳出明確的阻擋提示，並改切換到候補登記畫面
-          alert(e.message || '很抱歉，這位孩子已達兩次評估／門診機會上限，將為您改為登記候補。');
+          alert('溫馨提醒\n此孩童已完成兩次評估／門診預約，目前請改以候補方式登記。\n若後續有名額釋出，我們會主動與您聯繫，謝謝您的理解與配合。');
           state.waitlistMode = true;
           state.selectedSlotId = null;
           render();
