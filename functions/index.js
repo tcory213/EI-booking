@@ -359,20 +359,9 @@ const SLOT_TEMPLATE = [
   { dow: 5, time: '18:50' },
 ];
 
-exports.adminRegenerateTemplate = functions.https.onCall(async (data, context) => {
-  requireAuth(context);
-  await logAudit(context, 'adminRegenerateTemplate', {});
-
-  // 1. 刪除尚未被預約的固定時段
-  const toDeleteSnap = await db.collection('slots')
-    .where('source', '==', 'template').where('status', '==', 'open').get();
-  if (!toDeleteSnap.empty) {
-    const batch1 = db.batch();
-    toDeleteSnap.docs.forEach(d => batch1.delete(d.ref));
-    await batch1.commit();
-  }
-
-  // 2. 依樣板重新產生未來三個月內的固定時段
+// 依樣板補齊未來三個月內「尚不存在」的固定時段（只新增，不刪除），
+// 給「後台一鍵重新產生」和「每日自動排程」共用。
+async function createMissingTemplateSlots(){
   const metaRef = db.collection('templateMeta').doc('cancelledOcc');
   const metaDoc = await metaRef.get();
   const cancelledOcc = (metaDoc.exists && metaDoc.data().list) ? metaDoc.data().list : [];
@@ -394,13 +383,40 @@ exports.adminRegenerateTemplate = functions.https.onCall(async (data, context) =
   }
 
   if (toCreate.length > 0) {
-    const batch2 = db.batch();
-    toCreate.forEach(s => batch2.set(db.collection('slots').doc(), s));
-    await batch2.commit();
+    const batch = db.batch();
+    toCreate.forEach(s => batch.set(db.collection('slots').doc(), s));
+    await batch.commit();
+  }
+  return toCreate.length;
+}
+
+// 後台「重新產生固定時段」按鈕：先刪除尚未被預約的固定時段，再依樣板重新補齊
+exports.adminRegenerateTemplate = functions.https.onCall(async (data, context) => {
+  requireAuth(context);
+  await logAudit(context, 'adminRegenerateTemplate', {});
+
+  const toDeleteSnap = await db.collection('slots')
+    .where('source', '==', 'template').where('status', '==', 'open').get();
+  if (!toDeleteSnap.empty) {
+    const batch1 = db.batch();
+    toDeleteSnap.docs.forEach(d => batch1.delete(d.ref));
+    await batch1.commit();
   }
 
-  return { deleted: toDeleteSnap.size, created: toCreate.length };
+  const created = await createMissingTemplateSlots();
+  return { deleted: toDeleteSnap.size, created };
 });
+
+// 每日自動排程：不需要管理員登入，系統每天固定時間自動把「未來三個月內」缺少的固定時段補齊。
+// 只新增缺少的，不會刪除任何已存在的時段（不管是已預約、手動加開、或已存在的固定時段都不受影響）。
+exports.dailySlotRefresh = functions.pubsub
+  .schedule('every day 03:00')
+  .timeZone('Asia/Taipei')
+  .onRun(async () => {
+    const created = await createMissingTemplateSlots();
+    console.log(`[dailySlotRefresh] 每日自動補齊固定時段，本次新增 ${created} 筆`);
+    return null;
+  });
 
 /* ============================================================
  * 稽核紀錄查詢（僅限已登入管理員）

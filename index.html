@@ -734,7 +734,7 @@ function renderAdmin(){
     <div class="notice-card">
       <h3>📅 固定門診／評估時段</h3>
       <div style="font-size:13px; line-height:1.7;">${TEMPLATE_LABEL}</div>
-      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統會在管理員登入時自動補齊上述固定時段（至未來三個月），如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。建議定期回後台看看，讓時段保持補滿到三個月後。</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統每天會自動補齊上述固定時段（至未來三個月），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
       <button class="btn btn-secondary btn-small" id="regenTemplateBtn" style="margin-top:10px;">🔄 重新產生固定時段</button>
       <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">會清除「尚未被預約」的固定時段後依上方樣板重新產生，已被預約的時段與手動加開的時段不會受影響。</div>
     </div>
