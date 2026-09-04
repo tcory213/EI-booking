@@ -8,9 +8,7 @@ Thumbs.db
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
-
-# Vercel CLI 快取
-.vercel/
+deploy-log.txt
 
 # Node（若之後有加開發工具）
 node_modules/

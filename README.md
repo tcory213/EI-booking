@@ -1,10 +1,10 @@
 # EI Booking — 家歡診所兒童早療暨門診評估預約表 部署包
 
-這個資料夾是可直接部署到 **Firebase Hosting** 與 **Vercel** 的靜態網站，
-兩個網址會共用同一個 **Firebase Firestore** 資料庫，所以不管家長或後台
-從哪個網址進去，看到的預約時段、候補名單都是同一份、即時同步的資料。
+這個資料夾是可直接部署到 **Firebase Hosting** 的靜態網站，網站前端、
+資料庫（Firestore）、驗證（Auth）、後端邏輯（Cloud Functions）全部
+統一在同一個 Firebase 專案裡管理，不需要另外接其他託管平台。
 
-⚠️ **無法由 Claude 代為部署**：部署到你的 Firebase / Vercel 帳號，需要你自己
+⚠️ **無法由 Claude 代為部署**：部署到你的 Firebase 帳號，需要你自己
 登入並授權（Claude 沒有你的帳號存取權限）。以下步驟大約 10～15 分鐘可完成。
 
 ---
@@ -13,34 +13,31 @@
 
 ```
 ei-booking/
-├── index.html          ← 給 Vercel 用（放在根目錄，Vercel 會自動偵測）
 ├── public/
-│   └── index.html      ← 給 Firebase Hosting 用（內容與上面完全相同）
+│   └── index.html      ← 網站本體，家長與後台畫面都在這一個檔案裡
 ├── functions/
-│   ├── index.js          ← Cloud Functions 中介層程式碼（所有病患資料存取都在這裡）
+│   ├── index.js          ← Cloud Functions 程式碼（給完全沒登入的家長用的查詢功能）
 │   └── package.json       ← functions 的相依套件設定
 ├── firebase.json        ← Firebase Hosting + Functions 設定
 ├── .firebaserc           ← Firebase 專案 ID
 ├── firestore.rules       ← Firestore 資料庫存取規則
 ├── migrate-old-data.js    ← 選用：把更早期版本的資料搬到新架構的腳本
-├── vercel.json              ← Vercel 設定
 ├── .gitignore                ← 排除不需要進版控的暫存檔案
 └── README.md                  ← 本說明檔
 ```
 
-`index.html` 和 `public/index.html` 內容完全一樣，兩份都要記得同步修改
-（尤其是下面第 2 步要填的 Firebase 設定值）。
+以後要改網站畫面或邏輯，只要改 **`public/index.html`** 這一個檔案就好，
+不用再像之前一樣同時維護兩份。
 
 ---
 
 ## 第 1 步：確認 Firebase 設定值
 
-這份專案的 `index.html` 和 `public/index.html` 裡已經填好你的
-Firebase 專案（`ei-booking`）設定值，`.firebaserc` 的專案 ID 也已對應好，
-不需要再手動填寫。
+`public/index.html` 裡已經填好你的 Firebase 專案（`ei-booking`）設定值，
+`.firebaserc` 的專案 ID 也已對應好，不需要再手動填寫。
 
-若之後要換成別的 Firebase 專案，打開 `index.html` 和 `public/index.html`，
-找到這一段（在 `<script>` 開頭附近）換成新專案的設定值即可（**兩份檔案都要改**）：
+若之後要換成別的 Firebase 專案，打開 `public/index.html`，
+找到這一段（在 `<script>` 開頭附近）換成新專案的設定值即可：
 
 ```js
 const firebaseConfig = {
@@ -72,12 +69,11 @@ Cloud Functions 是 Google 要求一定要開通「Blaze（用量計費）方案
 在電腦的終端機（Terminal / 命令提示字元）安裝部署工具：
 
 ```bash
-npm install -g firebase-tools vercel
+npm install -g firebase-tools
 firebase login
-vercel login
 ```
 
-這兩行都會開啟瀏覽器讓你用 Google 帳號登入授權。
+這行會開啟瀏覽器讓你用 Google 帳號登入授權。
 
 接著安裝 Cloud Functions 需要的套件（只需要做一次）：
 
@@ -98,11 +94,11 @@ cd ..
 3. 這時會看到「reCAPTCHA Enterprise」和「reCAPTCHA」兩個選項，
    **選「reCAPTCHA Enterprise」**（「reCAPTCHA」那個已淘汰，選了會出現警告）
 4. 依畫面引導操作（可能會要求先啟用 reCAPTCHA Enterprise API），
-   網域填 `ei-booking.web.app`、`ei-booking.firebaseapp.com`、
-   `ei-booking.vercel.app`，之後有新網域也記得回來加
-5. 完成後複製這組 **Site Key**，打開 `index.html` **和** `public/index.html`，
+   網域填 `ei-booking.web.app`、`ei-booking.firebaseapp.com`，
+   之後有新網域也記得回來加
+5. 完成後複製這組 **Site Key**，打開 `public/index.html`，
    找到這一行，把 `REPLACE_WITH_YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY`
-   換成你的 Site Key（兩份檔案都要改，內容要一致）：
+   換成你的 Site Key：
    ```js
    const RECAPTCHA_ENTERPRISE_SITE_KEY = "REPLACE_WITH_YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY";
    ```
@@ -121,27 +117,17 @@ firebase deploy --only hosting,firestore:rules,functions
 ```
 
 第一次部署 functions 可能需要幾分鐘。完成後終端機會顯示一個
-`https://你的專案.web.app` 網址，這就是 Firebase 版本的網站。
-
-## 第 6 步：部署到 Vercel
-
-同樣在 `ei-booking` 資料夾中執行：
-
-```bash
-vercel --prod
-```
-
-第一次執行會問幾個問題（專案名稱、要不要連結既有專案等），
-直接按 Enter 用預設值即可。完成後會顯示一個 `https://你的專案.vercel.app` 網址。
+`https://你的專案.web.app` 網址，這就是正式對外使用的網址。
 
 之後如果要更新網站內容：
-- 只改了 `index.html`／`public/index.html` → `firebase deploy --only hosting` + `vercel --prod`
+- 只改了 `public/index.html` → 如果有接 GitHub 自動部署（見下方），
+  `git push` 就會自動更新，不用再手動下指令；沒接的話手動跑
+  `firebase deploy --only hosting`
 - 改了 `functions/index.js` → 記得加上 `firebase deploy --only functions`
 - 改了 `firestore.rules` → 記得加上 `firebase deploy --only firestore:rules`
-- 三個都要更新，最簡單就是整串一起跑：
+- 不確定改了什麼、想全部一起更新最保險：
   ```bash
   firebase deploy --only hosting,firestore:rules,functions
-  vercel --prod
   ```
 
 ---
@@ -174,6 +160,12 @@ vercel --prod
 - 手動「🔄 重新產生固定時段」按鈕已移除，固定時段完全交給每日自動排程
   （`dailySlotRefresh`）處理，不再需要這個手動選項
 
+### 登入失效自動偵測
+
+後台任何操作如果因為「其實沒有登入 / 登入已失效」而失敗，網站會自動跳出
+「登入已失效，請重新登入」的提示、自動登出、並直接帶回登入畫面，不用再
+自己開瀏覽器主控台查原因。
+
 ### 每日自動補齊固定時段（不需要管理員登入）
 
 `functions/index.js` 裡的 `dailySlotRefresh` 是一支**排程函式**，
@@ -193,16 +185,13 @@ Google 需要幫這個新專案啟用 Cloud Scheduler 相關 API，偶爾第一�
 記一筆到 `auditLogs`：時間、來源 IP、瀏覽器 User-Agent、若 Google 有附上國別
 資訊也會一併記下、若是管理員操作會記下是哪個帳號。這個 collection 前端
 只有「已登入的管理員」能讀取，一般訪客完全無法直接讀寫，登入後台、點
-「稽核紀錄」分頁即可直接看到（不再經過 Cloud Function），目前顯示最近 200 筆。
+「稽核紀錄」分頁即可直接看到，目前顯示最近 200 筆。
 
 用途：萬一日後懷疑遭到入侵或有異常存取（例如短時間內大量查詢、或看到明顯
 不像正常使用行為的紀錄），可以用這份紀錄裡的 IP 位址去查詢地理位置與歸屬
 （用任何 IP 查詢工具，例如 https://ipinfo.io/ 或 https://whois.domaintools.com/ ，
 把 IP 貼進去查），佐證是否來自境外或特定可疑來源。國別欄位如果是空的，
 代表 Google 那次沒有附上該資訊，不影響 IP 本身仍然可查。
-
-這個功能會讓 Firestore 每次呼叫都多一次寫入，用量極小（一般小型診所的流量，
-遠低於免費額度），不需要額外設定就能運作，只要照上面步驟部署 `functions` 即可。
 
 ### 是否要搬移舊資料？
 
@@ -215,11 +204,11 @@ Google 需要幫這個新專案啟用 Cloud Scheduler 相關 API，偶爾第一�
   如果你是從那個版本升級上來、且有真實資料要保留，跟我說一聲，
   我可以幫你寫一個對應現在這版架構的搬移腳本。
 
+---
 
 ## 推上 GitHub
 
-這個資料夾已經是一個 Git 專案（已執行過 `git init` 並完成第一次
-commit），解壓縮後可以直接推上你自己的 GitHub。
+這個資料夾已經是一個 Git 專案，解壓縮後可以直接推上你自己的 GitHub。
 
 **1. 在 GitHub 建立一個新的空 repo**（不要勾選「Add a README」，
 避免和本地端衝突）：
@@ -236,27 +225,20 @@ git push -u origin main
 
 推送時會要求登入 GitHub 帳號授權（或使用 Personal Access Token）。
 
-> 目前 commit 是用暫時的身分 `EI Booking Setup` 建立的。如果想改成你自己的
-> 名字/信箱，推送前可以先執行：
-> ```bash
-> git config user.name "你的名字"
-> git config user.email "你的信箱"
-> git commit --amend --reset-author --no-edit
-> ```
-
-### 之後接上自動部署（選用，但推薦）
+### 接上自動部署（選用，但推薦）
 
 推上 GitHub 之後，可以讓每次 `git push` 自動更新網站，不用再手動下部署指令：
 
-- **Vercel**：到 https://vercel.com/new ，選擇「Import Git Repository」，
-  選你剛剛建立的 `ei-booking` repo，其他設定保持預設直接部署。
-  之後每次 push 到 `main` 分支，Vercel 會自動重新部署。
-- **Firebase Hosting**：在 `ei-booking` 資料夾中執行：
-  ```bash
-  firebase init hosting:github
-  ```
-  依照互動式問答完成設定（會需要授權 Firebase 的 GitHub App），
-  之後每次 push 也會自動幫你重新部署到 Firebase Hosting。
+```bash
+firebase init hosting:github
+```
+
+依照互動式問答完成設定（會需要授權 Firebase 的 GitHub App），
+之後每次 push 到 `main` 分支也會自動幫你重新部署到 Firebase Hosting。
+
+⚠️ 這個只會自動部署 **Hosting**（前端網頁），不包含 `functions` 和
+`firestore.rules`。如果改了 `functions/index.js` 或 `firestore.rules`，
+還是要手動跑對應的 `firebase deploy --only ...`。
 
 ---
 
@@ -295,6 +277,3 @@ GitHub repo，真正的存取控制是靠 `firestore.rules` 與 Cloud Functions
 的權限檢查。但 `functions/` 資料夾如果之後有任何第三方服務的 API 金鑰，
 建議改用 `firebase functions:secrets:set` 設定，不要直接寫進程式碼或
 commit 上 GitHub。
-
-
-
