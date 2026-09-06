@@ -1045,7 +1045,6 @@ function renderSlotRow(s){
       <div><b>電話：</b>${b.phone}</div>
       <div><b>主要問題：</b>${b.issue}</div>
       <div><b>累計次數：</b>${b.priorLabel}</div>
-      ${b.priorityFlag ? '<div style="color:var(--danger); font-weight:700;">⚠️ 分流問卷顯示需優先評估（僅開放週二）</div>' : ''}
     </div>
     <div class="row-actions">
       <button class="btn btn-danger btn-small" data-cancel-booking="${s.id}">取消此預約</button>
