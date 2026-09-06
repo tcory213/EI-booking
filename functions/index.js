@@ -96,16 +96,27 @@ exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
   }
   const nm = normName(name);
   const today = todayStrTW();
-  const snap = await db.collection('bookings')
-    .where('name', '==', nm)
-    .where('birth', '==', birth)
-    .where('status', '==', 'active')
-    .get();
-  const results = snap.docs
+
+  const [bookSnap, waitSnap, langWaitSnap] = await Promise.all([
+    db.collection('bookings').where('name', '==', nm).where('birth', '==', birth).where('status', '==', 'active').get(),
+    db.collection('waitlist').where('name', '==', nm).where('birth', '==', birth).get(),
+    db.collection('languageWaitlist').where('name', '==', nm).where('birth', '==', birth).get(),
+  ]);
+
+  const results = bookSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(b => b.date >= today)
     .sort((a, b) => a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date));
-  return { results };
+
+  const waitlistResults = waitSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => a.submittedAt - b.submittedAt);
+
+  const languageWaitlistResults = langWaitSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => a.submittedAt - b.submittedAt);
+
+  return { results, waitlistResults, languageWaitlistResults };
 });
 
 /* ============================================================
