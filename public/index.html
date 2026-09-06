@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>EI Booking｜家歡診所兒童早療暨門診評估預約表</title>
+<title>👪家歡兒童早療預約登記</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <!-- Firebase (compat SDK，方便以純 <script> 標籤使用) -->
@@ -580,7 +580,7 @@ const SCREENING_QUESTIONS = {
     title: '大部份語言落後來自於缺乏刺激，而職能治療可針對此部分給予幫助。',
     options: [
       { value:1, label:'我想先進行職能評估及治療', sub:'大部份健保，時段多，排課快' },
-      { value:2, label:'我只想進行純語言評估及治療', sub:'全自費，僅有一個時段，平均等待時間 3-6 個月' },
+      { value:2, label:'我只想進行純語言評估及治療', sub:'全自費，僅有極少時段，平均等待時間6個月' },
     ]
   },
   q_brain: {
@@ -617,7 +617,7 @@ function renderScreeningWelcome(){
     <div class="card" style="text-align:center;">
       <div style="font-size:32px;">👋</div>
       <div style="font-weight:800; font-size:16px; margin-top:8px;">歡迎光臨 ❤️</div>
-      <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.8; margin-top:10px; text-align:left;">接下來將用幾個問題，來初步分類孩子的複雜程度，來選擇最適合孩子的評估選項及時段。</div>
+      <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.8; margin-top:10px; text-align:left;">接下來將用幾個問題，來初步分類孩子的複雜程度，以選擇最適合孩子的評估選項及時段。請點擊下方開始喔😊</div>
       <button class="btn btn-primary" id="screeningStartBtn">開始</button>
     </div>
   </div>`;
@@ -646,7 +646,7 @@ function renderLangForm(){
   const f = state.form;
   return `<div class="content">
     <div class="card">
-      <div style="font-weight:800; font-size:15.5px; margin-bottom:10px;">留下聯絡資料，為您登記語言候補</div>
+      <div style="font-weight:800; font-size:15.5px; margin-bottom:10px;">請留下聯絡資料，為您登記語言待排</div>
       <label class="field-label" style="margin-top:0;">兒童全名 <span class="req">*</span></label>
       <input type="text" id="f_name" placeholder="請輸入兒童全名" value="${f.name}">
 
@@ -670,7 +670,7 @@ function renderLangConfirm(){
   return `<div class="content"><div class="card confirm-box">
     <div class="check-circle">📋</div>
     <h2>已完成登記</h2>
-    <p>您好，初步分析您的孩子需要語言評估和語言治療為主。您的資料已完成登入待排名單。待排時間平均為 3-6 個月，預約到會以電話通知。請耐心等候喔 ❤️</p>
+    <p>您好，初步分析您的孩子需要語言評估和語言治療為主。您的資料已完成登入待排名單。待排時間平均為 6 個月，預約到會以電話通知。請耐心等候喔 ❤️</p>
     <button class="btn btn-secondary" id="restartScreeningBtn">返回首頁</button>
   </div></div>`;
 }
