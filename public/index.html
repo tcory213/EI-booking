@@ -256,6 +256,13 @@
   }
   .tab-btn.active{background:var(--tiffany-deep); border-color:var(--tiffany-deep); color:#fff;}
 
+  .day-divider{
+    display:flex; align-items:center; gap:10px; margin:16px 2px 8px;
+    color:var(--tiffany-deep); font-weight:800; font-size:12.5px;
+  }
+  .day-divider::before, .day-divider::after{content:''; flex:1; height:1px; background:var(--border);}
+  .day-divider:first-of-type{margin-top:4px;}
+
   .slot-row{
     border:1.5px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:10px; background:#fff;
   }
@@ -382,6 +389,7 @@ function toLocalISODate(d){
 }
 function todayStr(){ return toLocalISODate(new Date()); }
 function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+90); return toLocalISODate(d); }
+function minBookableDateStr(){ const d=new Date(); d.setDate(d.getDate()+2); return toLocalISODate(d); }
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
 
@@ -708,8 +716,8 @@ function isTuesday(dateStr){
   return new Date(dateStr+'T00:00:00').getDay() === 2;
 }
 function availableDates(){
-  const today = todayStr(), maxD = maxDateStr();
-  let list = slots.filter(s=>s.status==='open' && s.date>=today && s.date<=maxD);
+  const minD = minBookableDateStr(), maxD = maxDateStr();
+  let list = slots.filter(s=>s.status==='open' && s.date>=minD && s.date<=maxD);
   if(state.restrictTuesday) list = list.filter(s=>isTuesday(s.date));
   const openDates = [...new Set(list.map(s=>s.date))].sort();
   return openDates;
@@ -940,11 +948,23 @@ function renderAdmin(){
       <label class="field-label">備註（選填）</label>
       <input type="text" id="ns_note" placeholder="例如：限初評 / 醫師X門診" value="${state.newSlot.note}">
       <button class="btn btn-primary" id="addSlotBtn">新增時段</button>
-      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放未來三個月內（至 ${maxDateStr()}）的時段供家長預約。</div>
+      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來三個月內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
     </div>
     <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">時段列表（共 ${upcoming.length} 筆）</div>
     ${upcoming.length===0 ? '<div class="empty-state"><div class="emoji">🗓️</div>目前尚無時段，請於上方新增</div>' :
-      upcoming.map(s=>renderSlotRow(s)).join('')}
+      (function(){
+        let out = '';
+        let lastDate = null;
+        upcoming.forEach(s=>{
+          if(s.date !== lastDate){
+            out += `<div class="day-divider"><span>${fmtDateFull(s.date)}</span></div>`;
+            lastDate = s.date;
+          }
+          out += renderSlotRow(s);
+        });
+        return out;
+      })()
+    }
     ${activeCancelled.length>0 ? `
     <div style="font-weight:800; font-size:14px; margin:18px 4px 10px;">已停開的固定時段（${activeCancelled.length}）</div>
     ${activeCancelled.map(k=>{
