@@ -204,6 +204,16 @@
   .time-btn.selected{background:var(--coral); border-color:var(--coral); color:#fff;}
   .time-note{font-size:11px; color:var(--ink-faint); margin-top:3px; font-family:'Noto Sans TC';}
 
+  .choice-list{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
+  .choice-btn{
+    display:block; width:100%; text-align:left; padding:14px 16px; border-radius:14px;
+    border:1.5px solid var(--border); background:#FAFEFE; font-size:14.5px; font-weight:700;
+    color:var(--ink); cursor:pointer; font-family:inherit; line-height:1.5;
+  }
+  .choice-btn:active{background:var(--tiffany-light); border-color:var(--tiffany);}
+  .choice-sub{font-size:12px; font-weight:400; color:var(--ink-soft); margin-top:2px;}
+  .screen-progress{font-size:12px; color:var(--ink-faint); font-weight:700; margin-bottom:4px;}
+
   .empty-state{text-align:center; padding:30px 10px; color:var(--ink-soft);}
   .empty-state .emoji{font-size:36px; margin-bottom:8px;}
 
@@ -309,7 +319,8 @@ const fx = firebase.functions();
 /* ============ STATE ============ */
 
 let slots = [];       // 公開資料：時段列表 (date/time/note/status/source)，不含任何病患個資
-let waitlist = [];    // 私密資料：候補名單，僅後台登入後才會載入
+let waitlist = [];    // 私密資料：職能候補名單，僅後台登入後才會載入
+let languageWaitlist = []; // 私密資料：語言候補名單，僅後台登入後才會載入
 let cancelledOcc = [];   // 已被後台取消的「固定時段」單次紀錄 (格式: "YYYY-MM-DD|HH:MM")，僅後台使用
 let auditLogs = [];   // 稽核紀錄，僅後台登入後才會載入
 let adminLoading = false; // 後台資料是否正在載入中
@@ -343,7 +354,11 @@ const SLOT_TEMPLATE = [
 const TEMPLATE_LABEL = '週二 09:20、10:00、10:40｜週三 20:00｜週五 17:50、18:50';
 
 let state = {
-  view: 'patient',        // patient | admin | lookup
+  view: 'screening',      // screening | patient | admin | lookup
+  screeningScreen: 'welcome', // welcome | q_main | q_attention | q_langOT | q_brain | q_disability | q_instruction | langForm | langConfirm
+  screeningStack: [],      // 上一步導覽紀錄，供「返回上一步」使用
+  screeningAnswers: {},    // 每一題的作答紀錄，供後台參考
+  restrictTuesday: false,  // 是否限制只能選週二時段（第三~五頁任一題選1，或年齡不滿4歲）
   patientStep: 1,
   form: { name:'', birth:'', phone:'', issue:'' },
   selectedDate: null,
@@ -447,9 +462,10 @@ async function handleAuthExpired(){
 // 取回時段（含病患資料）、候補名單、固定時段停開清單，並在前端把資料 join 起來。
 async function loadAdminDashboard(){
   try{
-    const [slotsSnap, waitSnap, tplSnap, bookSnap] = await Promise.all([
+    const [slotsSnap, waitSnap, langWaitSnap, tplSnap, bookSnap] = await Promise.all([
       db.collection('slots').get(),
       db.collection('waitlist').get(),
+      db.collection('languageWaitlist').get(),
       db.collection('templateMeta').doc('cancelledOcc').get(),
       db.collection('bookings').where('status','==','active').get(),
     ]);
@@ -464,6 +480,7 @@ async function loadAdminDashboard(){
       return s;
     });
     waitlist = waitSnap.docs.map(d=>({ id: d.id, ...d.data() }));
+    languageWaitlist = langWaitSnap.docs.map(d=>({ id: d.id, ...d.data() }));
     cancelledOcc = (tplSnap.exists && tplSnap.data().list) ? tplSnap.data().list : [];
   }catch(e){
     console.error(e);
@@ -541,16 +558,128 @@ function renderNoticeCard(){
     </div>`;
 }
 
+/* ============ 初步篩檢分流 ============ */
+const SCREENING_QUESTIONS = {
+  q_main: {
+    title: '請問兒童的主要問題是什麼呢？',
+    options: [
+      { value:1, label:'很會說話但咬字不清' },
+      { value:2, label:'其他語言問題' },
+      { value:3, label:'情緒及專注力相關問題' },
+      { value:4, label:'其他' },
+    ]
+  },
+  q_attention: {
+    title: '會不會覺得兒童同時有專注力、或衝動、或情緒控制的問題？',
+    options: [
+      { value:1, label:'有' },
+      { value:2, label:'沒有' },
+    ]
+  },
+  q_langOT: {
+    title: '大部份語言落後來自於缺乏刺激，而職能治療可針對此部分給予幫助。',
+    options: [
+      { value:1, label:'我想先進行職能評估及治療', sub:'大部份健保，時段多，排課快' },
+      { value:2, label:'我只想進行純語言評估及治療', sub:'全自費，僅有一個時段，平均等待時間 3-6 個月' },
+    ]
+  },
+  q_brain: {
+    title: '請問孩子有腦部相關的發育異常或傷害嗎？',
+    subtitle: '（例如腦性麻痺等）',
+    options: [
+      { value:1, label:'有' },
+      { value:2, label:'沒有' },
+    ]
+  },
+  q_disability: {
+    title: '孩子有沒有身心障礙手冊呢？',
+    options: [
+      { value:1, label:'有' },
+      { value:2, label:'沒有' },
+    ]
+  },
+  q_instruction: {
+    title: '孩子是否已能配合基本指令呢？',
+    subtitle: '（例如配合尋找圖片上的物品）',
+    options: [
+      { value:1, label:'還聽不太懂，或需要重複幾次指令' },
+      { value:2, label:'可以配合' },
+    ]
+  },
+};
+
+function renderScreeningWelcome(){
+  return `<div class="content">
+    <div style="text-align:right; margin-bottom:6px;">
+      <button class="link-btn" id="gotoLookupBtn">查詢／取消預約 ›</button>
+    </div>
+    ${renderNoticeCard()}
+    <div class="card" style="text-align:center;">
+      <div style="font-size:32px;">👋</div>
+      <div style="font-weight:800; font-size:16px; margin-top:8px;">歡迎光臨 ❤️</div>
+      <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.8; margin-top:10px; text-align:left;">接下來將用幾個問題，來初步分類孩子的複雜程度，來選擇最適合孩子的評估選項及時段。</div>
+      <button class="btn btn-primary" id="screeningStartBtn">開始</button>
+    </div>
+  </div>`;
+}
+
+function renderScreeningQuestion(qid){
+  const q = SCREENING_QUESTIONS[qid];
+  return `<div class="content">
+    <div class="card">
+      <div style="font-weight:800; font-size:15.5px; line-height:1.6;">${q.title}</div>
+      ${q.subtitle ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">${q.subtitle}</div>` : ''}
+      <div class="choice-list">
+        ${q.options.map(o=>`
+          <button class="choice-btn" data-screen-choice="${o.value}">
+            ${o.label}
+            ${o.sub ? `<div class="choice-sub">${o.sub}</div>` : ''}
+          </button>
+        `).join('')}
+      </div>
+      <button class="btn btn-ghost" id="screeningBackBtn">‹ 返回上一步</button>
+    </div>
+  </div>`;
+}
+
+function renderLangForm(){
+  const f = state.form;
+  return `<div class="content">
+    <div class="card">
+      <div style="font-weight:800; font-size:15.5px; margin-bottom:10px;">留下聯絡資料，為您登記語言候補</div>
+      <label class="field-label" style="margin-top:0;">兒童全名 <span class="req">*</span></label>
+      <input type="text" id="f_name" placeholder="請輸入兒童全名" value="${f.name}">
+
+      <label class="field-label">兒童生日 <span class="req">*</span></label>
+      <input type="date" id="f_birth" max="${todayStr()}" value="${f.birth}">
+      <div class="age-hint" id="ageHint" style="display:${f.birth ? 'block':'none'}">目前年齡：${calcAge(f.birth)||''}</div>
+
+      <label class="field-label">聯絡手機 <span class="req">*</span></label>
+      <input type="tel" id="f_phone" placeholder="0912-345-678" value="${f.phone}">
+
+      <label class="field-label">主要問題 <span class="req">*</span></label>
+      <textarea id="f_issue" placeholder="請簡述孩子目前主要的發展或就診問題">${f.issue}</textarea>
+
+      <button class="btn btn-primary" id="submitLangBtn">送出候補登記</button>
+      <button class="btn btn-ghost" id="screeningBackBtn">‹ 返回上一步</button>
+    </div>
+  </div>`;
+}
+
+function renderLangConfirm(){
+  return `<div class="content"><div class="card confirm-box">
+    <div class="check-circle">📋</div>
+    <h2>已完成登記</h2>
+    <p>您好，初步分析您的孩子需要語言評估和語言治療為主。您的資料已完成登入待排名單。待排時間平均為 3-6 個月，預約到會以電話通知。請耐心等候喔 ❤️</p>
+    <button class="btn btn-secondary" id="restartScreeningBtn">返回首頁</button>
+  </div></div>`;
+}
+
 /* ============ RENDER: PATIENT STEP 1 ============ */
 function renderStep1(){
   const f = state.form;
   return `
   <div class="content">
-    <div style="text-align:right; margin-bottom:6px;">
-      <button class="link-btn" id="gotoLookupBtn">查詢／取消預約 ›</button>
-    </div>
-    ${renderNoticeCard()}
-
     <div class="card">
       <label class="field-label">兒童全名 <span class="req">*</span></label>
       <input type="text" id="f_name" placeholder="請輸入兒童全名" value="${f.name}">
@@ -568,20 +697,26 @@ function renderStep1(){
 
       <button class="btn btn-primary" id="toStep2Btn" ${f.birth && isOverAgeLimit(f.birth) ? 'disabled':''}>下一步：選擇時段</button>
     </div>
+    <button class="btn btn-ghost" id="backToScreeningBtn">‹ 返回上一步</button>
     <div class="footer-note">本系統為預約管理工具，個人資料僅供本院安排評估與門診使用。</div>
   </div>`;
 }
 
 /* ============ RENDER: PATIENT STEP 2 ============ */
+function isTuesday(dateStr){
+  return new Date(dateStr+'T00:00:00').getDay() === 2;
+}
 function availableDates(){
   const today = todayStr(), maxD = maxDateStr();
-  const openDates = [...new Set(
-    slots.filter(s=>s.status==='open' && s.date>=today && s.date<=maxD).map(s=>s.date)
-  )].sort();
+  let list = slots.filter(s=>s.status==='open' && s.date>=today && s.date<=maxD);
+  if(state.restrictTuesday) list = list.filter(s=>isTuesday(s.date));
+  const openDates = [...new Set(list.map(s=>s.date))].sort();
   return openDates;
 }
 function slotsForDate(dateStr){
-  return slots.filter(s=>s.status==='open' && s.date===dateStr).sort((a,b)=>a.time.localeCompare(b.time));
+  let list = slots.filter(s=>s.status==='open' && s.date===dateStr);
+  if(state.restrictTuesday) list = list.filter(s=>isTuesday(s.date));
+  return list.sort((a,b)=>a.time.localeCompare(b.time));
 }
 
 function renderSummaryChip(){
@@ -618,6 +753,7 @@ function renderStep2(){
     const daySlots = slotsForDate(selDate);
     body = `
     <div class="card">
+      ${state.restrictTuesday ? '<div class="age-warning" style="margin-bottom:12px;">⚠️ 依據前面的初步分流結果，目前僅開放週二時段供選擇，其餘時段暫不開放。</div>' : ''}
       <label class="field-label" style="margin-top:0;">選擇日期</label>
       <div class="date-scroll" id="dateScroll">
         ${dates.map(d=>{
@@ -786,7 +922,7 @@ function renderAdmin(){
   } else if(state.adminTab==='waitlist'){
     const sortedWait = [...waitlist].sort((a,b)=>a.submittedAt - b.submittedAt);
     tabContent = `
-    <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">候補名單（共 ${sortedWait.length} 筆，依登記先後排序）</div>
+    <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">職能候補名單（共 ${sortedWait.length} 筆，依登記先後排序）</div>
     ${sortedWait.length===0 ? '<div class="empty-state"><div class="emoji">📋</div>目前尚無候補登記</div>' :
       sortedWait.map((w,i)=>`
       <div class="waitlist-row">
@@ -798,6 +934,23 @@ function renderAdmin(){
         <div style="color:var(--ink-faint);">登記時間：${new Date(w.submittedAt).toLocaleString('zh-TW')}</div>
         <div class="row-actions">
           <button class="btn btn-secondary btn-small" data-remove-wait="${w.id}">已聯繫，移除</button>
+        </div>
+      </div>`).join('')}
+    `;
+  } else if(state.adminTab==='langWaitlist'){
+    const sortedLangWait = [...languageWaitlist].sort((a,b)=>a.submittedAt - b.submittedAt);
+    tabContent = `
+    <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">語言候補名單（共 ${sortedLangWait.length} 筆，依登記先後排序）</div>
+    ${sortedLangWait.length===0 ? '<div class="empty-state"><div class="emoji">🗣️</div>目前尚無候補登記</div>' :
+      sortedLangWait.map((w,i)=>`
+      <div class="waitlist-row">
+        <div class="wname">${i+1}. ${w.name}（${w.age}）</div>
+        <div>生日：${w.birth}</div>
+        <div>電話：${w.phone}</div>
+        <div>主要問題：${w.issue}</div>
+        <div style="color:var(--ink-faint);">登記時間：${new Date(w.submittedAt).toLocaleString('zh-TW')}</div>
+        <div class="row-actions">
+          <button class="btn btn-secondary btn-small" data-remove-lang-wait="${w.id}">已聯繫，移除</button>
         </div>
       </div>`).join('')}
     `;
@@ -835,9 +988,10 @@ function renderAdmin(){
       </div>
     </div>
     <div class="tab-row">
-      <div class="tab-btn ${state.adminTab==='slots'?'active':''}" data-tab="slots">時段管理</div>
-      <div class="tab-btn ${state.adminTab==='waitlist'?'active':''}" data-tab="waitlist">候補名單（${waitlist.length}）</div>
-      <div class="tab-btn ${state.adminTab==='audit'?'active':''}" data-tab="audit">稽核紀錄</div>
+      <div class="tab-btn ${state.adminTab==='slots'?'active':''}" data-tab="slots">時段</div>
+      <div class="tab-btn ${state.adminTab==='waitlist'?'active':''}" data-tab="waitlist">職能候補（${waitlist.length}）</div>
+      <div class="tab-btn ${state.adminTab==='langWaitlist'?'active':''}" data-tab="langWaitlist">語言候補（${languageWaitlist.length}）</div>
+      <div class="tab-btn ${state.adminTab==='audit'?'active':''}" data-tab="audit">稽核</div>
     </div>
     ${tabContent}
   </div>`;
@@ -854,6 +1008,7 @@ function renderSlotRow(s){
       <div><b>電話：</b>${b.phone}</div>
       <div><b>主要問題：</b>${b.issue}</div>
       <div><b>累計次數：</b>${b.priorLabel}</div>
+      ${b.priorityFlag ? '<div style="color:var(--danger); font-weight:700;">⚠️ 分流問卷顯示需優先評估（僅開放週二）</div>' : ''}
     </div>
     <div class="row-actions">
       <button class="btn btn-danger btn-small" data-cancel-booking="${s.id}">取消此預約</button>
@@ -885,6 +1040,12 @@ function render(){
     html += renderAdmin();
   } else if(state.view === 'lookup'){
     html += renderLookup();
+  } else if(state.view === 'screening'){
+    const s = state.screeningScreen;
+    if(s === 'welcome') html += renderScreeningWelcome();
+    else if(s === 'langForm') html += renderLangForm();
+    else if(s === 'langConfirm') html += renderLangConfirm();
+    else html += renderScreeningQuestion(s);
   } else {
     if(state.patientStep===1) html += renderStep1();
     else if(state.patientStep===2) html += renderStep2();
@@ -962,15 +1123,16 @@ function bindEvents(){
 
   if(state.view==='lookup'){ bindLookupEvents(); return; }
 
-  const gotoLookup = document.getElementById('gotoLookupBtn');
-  if(gotoLookup) gotoLookup.onclick = ()=>{
-    state.lookup = { name:'', birth:'', results:[], searched:false };
-    state.view = 'lookup';
-    render();
-  };
+  if(state.view==='screening'){ bindScreeningEvents(); return; }
 
   // ---- Patient step 1 ----
   if(state.patientStep===1){
+    const backToScreening = document.getElementById('backToScreeningBtn');
+    if(backToScreening) backToScreening.onclick = ()=>{
+      state.view = 'screening';
+      state.screeningScreen = state.screeningStack.pop() || 'q_instruction';
+      render();
+    };
     const nameEl = document.getElementById('f_name');
     const birthEl = document.getElementById('f_birth');
     const phoneEl = document.getElementById('f_phone');
@@ -993,6 +1155,9 @@ function bindEvents(){
       if(isOverAgeLimit(f.birth)){ alert(AGE_LIMIT_MSG); return; }
       if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡手機'); return; }
       if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
+      // 若前面分流問卷已判定需要限制，或孩童未滿四歲，最終都限制只能選週二時段
+      const months = ageInMonths(f.birth);
+      if(months !== null && months < 48){ state.restrictTuesday = true; }
       // 配額是否超過留到「確認預約」當下才由伺服器驗證，這裡不呼叫雲端函式，
       // 讓下一步的畫面切換是即時的，不用等網路來回。
       state.waitlistMode = false;
@@ -1051,7 +1216,9 @@ function bindEvents(){
             slotId: slot.id, name:f.name, birth:f.birth, age, phone:f.phone,
             phoneNorm: normPhone(f.phone), issue:f.issue, priorLabel,
             status:'active', bookedAt: Date.now(),
-            date: s.date, time: s.time, note: s.note || ''
+            date: s.date, time: s.time, note: s.note || '',
+            screeningAnswers: { ...state.screeningAnswers },
+            priorityFlag: !!state.restrictTuesday
           });
           return { date: s.date, time: s.time, note: s.note || '' };
         });
@@ -1105,10 +1272,119 @@ function bindEvents(){
     if(restartBtn) restartBtn.onclick = ()=>{
       state.form = { name:'', birth:'', phone:'', issue:'' };
       state.selectedDate=null; state.selectedSlotId=null; state.bookingResult=null; state.waitlistMode=false;
+      state.screeningAnswers = {}; state.screeningStack = []; state.restrictTuesday = false;
+      state.screeningScreen = 'welcome';
+      state.view = 'screening';
       state.patientStep = 1;
       render();
     };
   }
+}
+
+// 篩檢流程導覽：goScreen 前進並記錄上一步，backScreen 返回上一步
+function goScreen(next){
+  state.screeningStack.push(state.screeningScreen);
+  state.screeningScreen = next;
+  render();
+}
+
+function bindScreeningEvents(){
+  const gotoLookup = document.getElementById('gotoLookupBtn');
+  if(gotoLookup) gotoLookup.onclick = ()=>{
+    state.lookup = { name:'', birth:'', results:[], searched:false };
+    state.view = 'lookup';
+    render();
+  };
+
+  const startBtn = document.getElementById('screeningStartBtn');
+  if(startBtn) startBtn.onclick = ()=>{ goScreen('q_main'); };
+
+  const backBtn = document.getElementById('screeningBackBtn');
+  if(backBtn) backBtn.onclick = ()=>{
+    state.screeningScreen = state.screeningStack.pop() || 'welcome';
+    render();
+  };
+
+  document.querySelectorAll('[data-screen-choice]').forEach(el=>{
+    el.onclick = ()=>{
+      const val = parseInt(el.getAttribute('data-screen-choice'), 10);
+      const cur = state.screeningScreen;
+      state.screeningAnswers[cur] = val;
+      if(cur === 'q_main'){
+        if(val===1) goScreen('q_attention');
+        else if(val===2) goScreen('q_langOT');
+        else goScreen('q_brain');
+      } else if(cur === 'q_attention'){
+        goScreen(val===1 ? 'q_brain' : 'langForm');
+      } else if(cur === 'q_langOT'){
+        goScreen(val===1 ? 'q_brain' : 'langForm');
+      } else if(cur === 'q_brain'){
+        goScreen('q_disability');
+      } else if(cur === 'q_disability'){
+        goScreen('q_instruction');
+      } else if(cur === 'q_instruction'){
+        // 篩檢問卷結束：任一題(第三~五頁)選1，則之後只開放週二時段
+        const flagged = [state.screeningAnswers.q_brain, state.screeningAnswers.q_disability, state.screeningAnswers.q_instruction]
+          .some(a => a === 1);
+        state.restrictTuesday = flagged;
+        state.screeningStack.push(cur); // 供正式表單頁「返回上一步」使用
+        state.view = 'patient';
+        state.patientStep = 1;
+        render();
+      }
+    };
+  });
+
+  // 語言候補表單欄位（跟正式預約表單共用同一組 state.form）
+  if(state.screeningScreen === 'langForm'){
+    const nameEl = document.getElementById('f_name');
+    const birthEl = document.getElementById('f_birth');
+    const phoneEl = document.getElementById('f_phone');
+    const issueEl = document.getElementById('f_issue');
+    if(nameEl) nameEl.addEventListener('input', e=>{ state.form.name = e.target.value; });
+    if(phoneEl) phoneEl.addEventListener('input', e=>{ state.form.phone = e.target.value; });
+    if(issueEl) issueEl.addEventListener('input', e=>{ state.form.issue = e.target.value; });
+    if(birthEl) birthEl.addEventListener('change', e=>{
+      state.form.birth = e.target.value;
+      render();
+    });
+
+    const submitLang = document.getElementById('submitLangBtn');
+    if(submitLang) submitLang.onclick = async ()=>{
+      const f = state.form;
+      if(!f.name.trim()){ showToast('請填寫兒童全名'); return; }
+      if(!f.birth || !calcAge(f.birth)){ showToast('請選擇正確的兒童生日'); return; }
+      if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡手機'); return; }
+      if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
+      submitLang.disabled = true;
+      submitLang.textContent = '送出中…';
+      try{
+        const age = calcAge(f.birth);
+        await db.collection('languageWaitlist').add({
+          name:f.name, birth:f.birth, age, phone:f.phone, phoneNorm: normPhone(f.phone),
+          issue:f.issue, submittedAt: Date.now(),
+          screeningAnswers: { ...state.screeningAnswers }
+        });
+        goScreen('langConfirm');
+      }catch(e){
+        console.error(e);
+        showToast('送出失敗，請重試');
+        submitLang.disabled = false;
+        submitLang.textContent = '送出候補登記';
+      }
+    };
+  }
+
+  const restartScreening = document.getElementById('restartScreeningBtn');
+  if(restartScreening) restartScreening.onclick = ()=>{
+    state.form = { name:'', birth:'', phone:'', issue:'' };
+    state.screeningAnswers = {};
+    state.screeningStack = [];
+    state.restrictTuesday = false;
+    state.screeningScreen = 'welcome';
+    state.view = 'screening';
+    render();
+  };
 }
 
 function bindLookupEvents(){
@@ -1118,7 +1394,7 @@ function bindLookupEvents(){
   if(birthEl) birthEl.addEventListener('change', e=>{ state.lookup.birth = e.target.value; });
 
   const backBtn = document.getElementById('backToBookBtn');
-  if(backBtn) backBtn.onclick = ()=>{ state.view='patient'; state.patientStep=1; render(); };
+  if(backBtn) backBtn.onclick = ()=>{ state.view='screening'; state.screeningScreen='welcome'; render(); };
 
   const searchBtn = document.getElementById('lookupSearchBtn');
   if(searchBtn) searchBtn.onclick = async ()=>{
@@ -1311,6 +1587,20 @@ function bindAdminEvents(){
           // 移除候補不需要登入驗證（依需求設定，靠每日備份因應誤刪風險）
           await db.collection('waitlist').doc(id).delete();
           waitlist = waitlist.filter(w=>w.id!==id);
+          render();
+        }catch(e){
+          console.error(e);
+          showToast('刪除失敗，請重試');
+        }
+      };
+    });
+    document.querySelectorAll('[data-remove-lang-wait]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.getAttribute('data-remove-lang-wait');
+        try{
+          // 移除候補不需要登入驗證（依需求設定，靠每日備份因應誤刪風險）
+          await db.collection('languageWaitlist').doc(id).delete();
+          languageWaitlist = languageWaitlist.filter(w=>w.id!==id);
           render();
         }catch(e){
           console.error(e);

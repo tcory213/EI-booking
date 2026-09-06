@@ -20,10 +20,13 @@ rules_version = '2';
 //   更新只開放「取消」這個狀態轉換（active→cancelled，且其餘欄位不能變），不需要登入；
 //   已登入管理員則不受此限制。刪除需要登入管理員。
 //
-// waitlist/{entryId} → 候補名單，含個資。
+// waitlist/{entryId} → 職能候補名單，含個資。
 //   任何人都能送出候補登記（create）與移除一筆已知的候補（delete，不需要登入，
 //   因為刪除操作實際上只有拿到後台完整名單的管理員才會知道要刪哪一筆）。
 //   讀取全部候補名單、修改內容則需要登入管理員。
+//
+// languageWaitlist/{entryId} → 語言候補名單（來自首頁前的初步分流問卷），
+//   規則與 waitlist 完全比照辦理。
 //
 // templateMeta/{docId} → 固定時段的內部設定（已停開清單），不含個資，需要登入才能讀寫。
 //
@@ -62,6 +65,12 @@ service cloud.firestore {
     }
 
     match /waitlist/{entryId} {
+      allow create, delete: if true;
+      allow read, update: if request.auth != null;
+    }
+
+    // 語言候補名單（來自首頁前的初步分流問卷），規則比照職能候補名單
+    match /languageWaitlist/{entryId} {
       allow create, delete: if true;
       allow read, update: if request.auth != null;
     }
