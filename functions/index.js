@@ -39,6 +39,16 @@ async function countActiveBookings(name, birth){
     .where('birth', '==', birth)
     .where('status', '==', 'active')
     .get();
+  return snap.docs.map(d => d.data());
+}
+
+async function countNoShows(name, birth){
+  const nm = normName(name);
+  const snap = await db.collection('bookings')
+    .where('name', '==', nm)
+    .where('birth', '==', birth)
+    .where('noShow', '==', true)
+    .get();
   return snap.size;
 }
 
@@ -76,15 +86,22 @@ async function logAudit(context, action, extra){
  * 家長端：查詢類（保留在 Cloud Functions）
  * ============================================================ */
 
-// 查詢某個孩子（姓名+生日）已使用過幾次評估/門診機會
+// 檢查某個孩子（姓名+生日）目前是否已有一筆有效預約、以及是否因累計爽約被暫停線上預約資格
 exports.checkQuota = functions.https.onCall(async (data, context) => {
   await logAudit(context, 'checkQuota', {});
   const { name, birth } = data || {};
   if (!name || !birth) {
     throw new functions.https.HttpsError('invalid-argument', '缺少必要參數');
   }
-  const used = await countActiveBookings(name, birth);
-  return { used };
+  const today = todayStrTW();
+  const [activeBookings, noShowCount] = await Promise.all([
+    countActiveBookings(name, birth),
+    countNoShows(name, birth),
+  ]);
+  // 「未來的時間」包含今天整天、以及明天以後
+  const hasFutureBooking = activeBookings.some(b => b.date >= today);
+  const noShowBlocked = noShowCount >= 2;
+  return { hasFutureBooking, noShowBlocked };
 });
 
 // 家長查詢自己的預約（用兒童全名+生日核對）

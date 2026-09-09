@@ -363,10 +363,9 @@ const TEMPLATE_LABEL = '週二 09:20、10:00、10:40｜週三 20:00｜週五 17:
 
 let state = {
   view: 'screening',      // screening | patient | admin | lookup
-  screeningScreen: 'welcome', // welcome | q_main | q_attention | q_langOT | q_brain | q_disability | q_instruction | langForm | langConfirm
+  screeningScreen: 'welcome', // welcome | q_main | q_attention | q_langOT | langForm | langConfirm
   screeningStack: [],      // 上一步導覽紀錄，供「返回上一步」使用
   screeningAnswers: {},    // 每一題的作答紀錄，供後台參考
-  restrictTuesday: false,  // 是否限制只能選週二時段（第三~五頁任一題選1，或年齡不滿4歲）
   patientStep: 1,
   form: { name:'', birth:'', phone:'', issue:'' },
   selectedDate: null,
@@ -552,16 +551,16 @@ function renderNoticeCard(){
         <b>1. 請攜帶孩子的健保卡及評估報告（若已於醫院評估）。</b>
       </div>
       <div class="notice-item">
-        <b>2. 預約時段包含約 30 分鐘的評估及門診。</b>
-        <div class="notice-sub">考量評估、候診及門診銜接時間，建議家長預留約 1～1.5 小時，讓整個流程能更從容、順利地完成。</div>
+        <b>2. 預約時段包含約 30-60分鐘的評估及門診。</b>
+        <div class="notice-sub"><b>考量評估、候診及門診銜接時間，建議家長預留約 1.5～2 小時</b>，讓整個流程能更從容、順利地完成。</div>
       </div>
       <div class="notice-item">
         <b>3. 顯示的時間為報到時間，提醒家長準時報到唷！附近難停車，若開車請預留較多的停車時間。</b>
-        <div class="notice-sub">因後續仍有其他孩子安排評估及課程，若遲到超過 10 分鐘，可能會影響後續孩子的時段，因此將協助您另行安排合適的評估時間，謝謝您的體諒與配合。</div>
+        <div class="notice-sub">因後續仍有其他孩子安排評估及課程，若<b>遲到超過 10 分鐘</b>，可能會影響後續孩子的時段，因此將協助您<b>另行安排合適的評估時間</b>，謝謝您的體諒與配合。</div>
       </div>
       <div class="notice-item">
-        <b>4. 為了讓更多有需要的孩子都有機會獲得評估與門診服務，每位孩童原則上提供 2 次評估及門診機會。若無法前來請於一日前線上取消。</b>
-        <div class="notice-sub">若已有 2 次評估及門診預約，之後仍有評估需求，也歡迎先留下聯絡資料登記候補；如遇其他預約個案臨時取消，我們會再依候補情形以電話與您聯繫。</div>
+        <b>4. 為了將有限的醫療資源提供給真正需要的孩子，若已預約但無法前來，請於前一日完成線上取消；若為當日臨時狀況，也請來電告知取消，讓我們能將時段安排給其他等候中的孩子。</b>
+        <div class="notice-sub">若預約後未報到且未事先取消，本院將予以紀錄；累計達 2 次者，將取消後續於本院評估及排課的資格。</div>
       </div>
       <div class="notice-thanks">謝謝家長們的理解與配合，讓有限的評估時段能更妥善地安排，也讓每位孩子都能有更完整、安心的評估過程。 💛</div>
     </div>`;
@@ -590,29 +589,6 @@ const SCREENING_QUESTIONS = {
     options: [
       { value:1, label:'我想先進行職能評估及治療', sub:'大部份健保，時段多，排課快' },
       { value:2, label:'我只想進行純語言評估及治療', sub:'全自費，僅有極少時段，平均等待時間6個月' },
-    ]
-  },
-  q_brain: {
-    title: '請問孩子有腦部相關的發育異常或傷害嗎？',
-    subtitle: '（例如腦性麻痺等）',
-    options: [
-      { value:1, label:'有' },
-      { value:2, label:'沒有' },
-    ]
-  },
-  q_disability: {
-    title: '孩子有沒有身心障礙手冊呢？',
-    options: [
-      { value:1, label:'有' },
-      { value:2, label:'沒有' },
-    ]
-  },
-  q_instruction: {
-    title: '孩子是否已能配合基本指令呢？',
-    subtitle: '（例如配合尋找圖片上的物品）',
-    options: [
-      { value:1, label:'還聽不太懂，或需要重複幾次指令' },
-      { value:2, label:'可以配合' },
     ]
   },
 };
@@ -654,6 +630,7 @@ function renderScreeningQuestion(qid){
 function renderLangForm(){
   const f = state.form;
   return `<div class="content">
+    <div class="age-warning" style="margin-bottom:12px;">⚠️ 提醒您，語言評估及治療皆為<b>自費</b>，費用為 <b>800 元／30 分鐘</b>，且目前<b>僅有週四晚間的時段</b>，請您評估後再進行登記。</div>
     <div class="card">
       <div style="font-weight:800; font-size:15.5px; margin-bottom:10px;">請留下聯絡資料，為您登記語言待排</div>
       <label class="field-label" style="margin-top:0;">兒童全名 <span class="req">*</span></label>
@@ -712,20 +689,14 @@ function renderStep1(){
 }
 
 /* ============ RENDER: PATIENT STEP 2 ============ */
-function isTuesday(dateStr){
-  return new Date(dateStr+'T00:00:00').getDay() === 2;
-}
 function availableDates(){
   const minD = minBookableDateStr(), maxD = maxDateStr();
-  let list = slots.filter(s=>s.status==='open' && s.date>=minD && s.date<=maxD);
-  if(state.restrictTuesday) list = list.filter(s=>isTuesday(s.date));
+  const list = slots.filter(s=>s.status==='open' && s.date>=minD && s.date<=maxD);
   const openDates = [...new Set(list.map(s=>s.date))].sort();
   return openDates;
 }
 function slotsForDate(dateStr){
-  let list = slots.filter(s=>s.status==='open' && s.date===dateStr);
-  if(state.restrictTuesday) list = list.filter(s=>isTuesday(s.date));
-  return list.sort((a,b)=>a.time.localeCompare(b.time));
+  return slots.filter(s=>s.status==='open' && s.date===dateStr).sort((a,b)=>a.time.localeCompare(b.time));
 }
 
 function renderSummaryChip(){
@@ -744,7 +715,7 @@ function renderStep2(){
   let body = '';
   if(goWaitlist){
     const reason = state.waitlistMode
-      ? '為了讓更多孩子都有接受評估與門診的機會，每位孩童提供兩次預約機會。<br>目前此孩童已完成兩次預約，因此暫時無法直接選擇時段。<br><br>您可以先登記候補，若後續有其他家庭臨時取消、釋出名額，我們會依候補順序主動與您聯繫安排。<br><br>謝謝您的理解，也謝謝您一起讓醫療資源能更妥善地提供給需要的孩子。'
+      ? '為了讓更多孩子都有接受評估與門診的機會，同一時間每位孩童僅能保留一筆有效預約。<br>目前此孩童已經有一筆預約，因此暫時無法直接選擇新的時段。<br><br>您可以先登記候補，若後續有其他家庭臨時取消、釋出名額，我們會依候補順序主動與您聯繫安排。<br><br>謝謝您的理解，也謝謝您一起讓醫療資源能更妥善地提供給需要的孩子。'
       : '目前暫無開放時段，將為您登記候補，待有時段開出將優先通知。';
     body = `
     <div class="card">
@@ -762,7 +733,6 @@ function renderStep2(){
     const daySlots = slotsForDate(selDate);
     body = `
     <div class="card">
-      ${state.restrictTuesday ? '<div class="age-warning" style="margin-bottom:12px;">⚠️ 依據前面的初步分流結果，目前僅開放週二時段供選擇，其餘時段暫不開放。</div>' : ''}
       <label class="field-label" style="margin-top:0;">選擇日期</label>
       <div class="date-scroll" id="dateScroll">
         ${dates.map(d=>{
@@ -987,7 +957,6 @@ function renderAdmin(){
         <div>生日：${w.birth}</div>
         <div>電話：${w.phone}</div>
         <div>主要問題：${w.issue}</div>
-        <div>累計次數：${w.priorLabel}</div>
         <div style="color:var(--ink-faint);">登記時間：${new Date(w.submittedAt).toLocaleString('zh-TW')}</div>
         <div class="row-actions">
           <button class="btn btn-secondary btn-small" data-remove-wait="${w.id}">已聯繫，移除</button>
@@ -1064,10 +1033,13 @@ function renderSlotRow(s){
       <div><b>生日：</b>${b.birth}</div>
       <div><b>電話：</b>${b.phone}</div>
       <div><b>主要問題：</b>${b.issue}</div>
-      <div><b>累計次數：</b>${b.priorLabel}</div>
+      ${b.noShow ? '<div style="color:var(--danger); font-weight:700; margin-top:4px;">⚠️ 已標記爽約</div>' : ''}
     </div>
     <div class="row-actions">
       <button class="btn btn-danger btn-small" data-cancel-booking="${s.id}">取消此預約</button>
+      ${b.noShow
+        ? `<button class="btn btn-secondary btn-small" data-unmark-noshow="${s.id}">取消爽約標記</button>`
+        : `<button class="btn btn-secondary btn-small" data-mark-noshow="${s.id}">標記爽約</button>`}
     </div>`;
   } else {
     patientBlock = `<div class="row-actions">
@@ -1186,7 +1158,7 @@ function bindEvents(){
     const backToScreening = document.getElementById('backToScreeningBtn');
     if(backToScreening) backToScreening.onclick = ()=>{
       state.view = 'screening';
-      state.screeningScreen = state.screeningStack.pop() || 'q_instruction';
+      state.screeningScreen = state.screeningStack.pop() || 'welcome';
       render();
     };
     const nameEl = document.getElementById('f_name');
@@ -1211,9 +1183,6 @@ function bindEvents(){
       if(isOverAgeLimit(f.birth)){ alert(AGE_LIMIT_MSG); return; }
       if(!f.phone.trim() || f.phone.replace(/\D/g,'').length < 8){ showToast('請填寫正確的聯絡手機'); return; }
       if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
-      // 若前面分流問卷已判定需要限制，或孩童未滿四歲，最終都限制只能選週二時段
-      const months = ageInMonths(f.birth);
-      if(months !== null && months < 48){ state.restrictTuesday = true; }
       // 配額是否超過留到「確認預約」當下才由伺服器驗證，這裡不呼叫雲端函式，
       // 讓下一步的畫面切換是即時的，不用等網路來回。
       state.waitlistMode = false;
@@ -1249,16 +1218,21 @@ function bindEvents(){
         // 配額檢查仍透過 Cloud Function（涉及查詢其他人的資料，需要保護），
         // 實際寫入時段與建立預約則直接寫 Firestore（純寫入，不涉及讀取他人資料）。
         const qRes = await fx.httpsCallable('checkQuota')({ name: f.name, birth: f.birth });
-        const used = qRes.data.used;
-        if(used >= 2){
-          alert('溫馨提醒\n此孩童已完成兩次評估／門診預約，目前請改以候補方式登記。\n若後續有名額釋出，我們會主動與您聯繫，謝謝您的理解與配合。');
+        const { hasFutureBooking, noShowBlocked } = qRes.data;
+        if(noShowBlocked){
+          alert('很抱歉，因先前已有 2 次預約未到紀錄，暫停線上預約資格。如有需要，請直接致電本院為您協助安排。');
+          toStep3.disabled = false;
+          toStep3.textContent = '確認預約時段';
+          return;
+        }
+        if(hasFutureBooking){
+          alert('溫馨提醒\n此孩童目前已有一筆有效預約，同一時間僅能保留一筆預約。若想更改時段，請先取消原本的預約；若想登記候補，我們會在有名額釋出時主動與您聯繫。');
           state.waitlistMode = true;
           state.selectedSlotId = null;
           render();
           return;
         }
         const age = calcAge(f.birth);
-        const priorLabel = '第 '+(used+1)+' 次（上限2次）';
         const slotRef = db.collection('slots').doc(slot.id);
         const bookingRef = db.collection('bookings').doc();
         const result = await db.runTransaction(async (tx)=>{
@@ -1270,11 +1244,10 @@ function bindEvents(){
           tx.update(slotRef, { status:'booked' });
           tx.set(bookingRef, {
             slotId: slot.id, name:f.name, birth:f.birth, age, phone:f.phone,
-            phoneNorm: normPhone(f.phone), issue:f.issue, priorLabel,
-            status:'active', bookedAt: Date.now(),
+            phoneNorm: normPhone(f.phone), issue:f.issue,
+            status:'active', bookedAt: Date.now(), noShow:false,
             date: s.date, time: s.time, note: s.note || '',
-            screeningAnswers: { ...state.screeningAnswers },
-            priorityFlag: !!state.restrictTuesday
+            screeningAnswers: { ...state.screeningAnswers }
           });
           return { date: s.date, time: s.time, note: s.note || '' };
         });
@@ -1303,12 +1276,16 @@ function bindEvents(){
       submitWait.textContent = '送出中…';
       try{
         const qRes = await fx.httpsCallable('checkQuota')({ name: f.name, birth: f.birth });
-        const used = qRes.data.used;
-        const priorLabel = used>=2 ? '已達2次上限' : ('第 '+(used+1)+' 次（上限2次）');
+        if(qRes.data.noShowBlocked){
+          alert('很抱歉，因先前已有 2 次預約未到紀錄，暫停線上預約資格。如有需要，請直接致電本院為您協助安排。');
+          submitWait.disabled = false;
+          submitWait.textContent = '送出候補登記';
+          return;
+        }
         const age = calcAge(f.birth);
         await db.collection('waitlist').add({
           name:f.name, birth:f.birth, age, phone:f.phone, phoneNorm: normPhone(f.phone),
-          issue:f.issue, priorLabel, submittedAt:Date.now()
+          issue:f.issue, submittedAt:Date.now()
         });
         state.bookingResult = { type:'waitlist', name:f.name, age, phone:f.phone, issue:f.issue };
         state.patientStep = 3;
@@ -1328,7 +1305,7 @@ function bindEvents(){
     if(restartBtn) restartBtn.onclick = ()=>{
       state.form = { name:'', birth:'', phone:'', issue:'' };
       state.selectedDate=null; state.selectedSlotId=null; state.bookingResult=null; state.waitlistMode=false;
-      state.screeningAnswers = {}; state.screeningStack = []; state.restrictTuesday = false;
+      state.screeningAnswers = {}; state.screeningStack = [];
       state.screeningScreen = 'welcome';
       state.view = 'screening';
       state.patientStep = 1;
@@ -1341,6 +1318,14 @@ function bindEvents(){
 function goScreen(next){
   state.screeningStack.push(state.screeningScreen);
   state.screeningScreen = next;
+  render();
+}
+
+// 問卷結束，進入正式預約表單（同時記錄上一步，供表單頁「返回上一步」使用）
+function finishScreening(cur){
+  state.screeningStack.push(cur);
+  state.view = 'patient';
+  state.patientStep = 1;
   render();
 }
 
@@ -1369,24 +1354,13 @@ function bindScreeningEvents(){
       if(cur === 'q_main'){
         if(val===1) goScreen('q_attention');
         else if(val===2) goScreen('q_langOT');
-        else goScreen('q_brain');
+        else finishScreening(cur);
       } else if(cur === 'q_attention'){
-        goScreen(val===1 ? 'q_brain' : 'langForm');
+        if(val===1) finishScreening(cur);
+        else goScreen('langForm');
       } else if(cur === 'q_langOT'){
-        goScreen(val===1 ? 'q_brain' : 'langForm');
-      } else if(cur === 'q_brain'){
-        goScreen('q_disability');
-      } else if(cur === 'q_disability'){
-        goScreen('q_instruction');
-      } else if(cur === 'q_instruction'){
-        // 篩檢問卷結束：任一題(第三~五頁)選1，則之後只開放週二時段
-        const flagged = [state.screeningAnswers.q_brain, state.screeningAnswers.q_disability, state.screeningAnswers.q_instruction]
-          .some(a => a === 1);
-        state.restrictTuesday = flagged;
-        state.screeningStack.push(cur); // 供正式表單頁「返回上一步」使用
-        state.view = 'patient';
-        state.patientStep = 1;
-        render();
+        if(val===1) finishScreening(cur);
+        else goScreen('langForm');
       }
     };
   });
@@ -1436,7 +1410,6 @@ function bindScreeningEvents(){
     state.form = { name:'', birth:'', phone:'', issue:'' };
     state.screeningAnswers = {};
     state.screeningStack = [];
-    state.restrictTuesday = false;
     state.screeningScreen = 'welcome';
     state.view = 'screening';
     render();
@@ -1634,6 +1607,41 @@ function bindAdminEvents(){
           await db.collection('slots').doc(id).update({ status:'open' });
           if(slot){ slot.status='open'; delete slot.booking; }
           showToast('已取消預約，時段已釋出');
+          render();
+        }catch(e){
+          console.error(e);
+          if(isAuthError(e)){ await handleAuthExpired(); return; }
+          showToast('操作失敗，請重試');
+        }
+      };
+    });
+    document.querySelectorAll('[data-mark-noshow]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.getAttribute('data-mark-noshow');
+        const slot = slots.find(x=>x.id===id);
+        if(!slot || !slot.booking || !slot.booking._bookingId) return;
+        if(!confirm('確定要將這筆預約標記為「爽約」嗎？\n\n同一孩童累計 2 次爽約後，將自動暫停其線上預約資格。')) return;
+        try{
+          await db.collection('bookings').doc(slot.booking._bookingId).update({ noShow: true });
+          slot.booking.noShow = true;
+          showToast('已標記為爽約');
+          render();
+        }catch(e){
+          console.error(e);
+          if(isAuthError(e)){ await handleAuthExpired(); return; }
+          showToast('操作失敗，請重試');
+        }
+      };
+    });
+    document.querySelectorAll('[data-unmark-noshow]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.getAttribute('data-unmark-noshow');
+        const slot = slots.find(x=>x.id===id);
+        if(!slot || !slot.booking || !slot.booking._bookingId) return;
+        try{
+          await db.collection('bookings').doc(slot.booking._bookingId).update({ noShow: false });
+          slot.booking.noShow = false;
+          showToast('已取消爽約標記');
           render();
         }catch(e){
           console.error(e);
