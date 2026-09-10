@@ -602,7 +602,7 @@ const SCREENING_QUESTIONS = {
     options: [
       { value:1, label:'很會說話但咬字不清' },
       { value:2, label:'其他語言問題' },
-      { value:3, label:'情緒及專注力相關問題' },
+      { value:3, label:'情緒、社交、專注力等問題' },
       { value:4, label:'肌力弱、易跌倒、跑跳弱' },
       { value:5, label:'斜頸' },
       { value:6, label:'其他' },
@@ -1436,7 +1436,7 @@ function bindScreeningEvents(){
         else if(val===2) goScreen('q_langOT');
         else if(val===4) finishScreening(cur, 'wedOnly'); // 肌力弱、易跌倒、跑跳弱：僅開放週三晚上
         else if(val===5) goScreen('torticollisNotice'); // 斜頸：先顯示提示頁
-        else finishScreening(cur); // 情緒及專注力相關問題／其他
+        else finishScreening(cur); // 情緒、社交、專注力等問題／其他
       } else if(cur === 'q_attention'){
         if(val===1) finishScreening(cur);
         else goScreen('langForm');
