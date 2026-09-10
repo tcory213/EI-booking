@@ -98,10 +98,13 @@ exports.checkQuota = functions.https.onCall(async (data, context) => {
     countActiveBookings(name, birth),
     countNoShows(name, birth),
   ]);
-  // 「未來的時間」包含今天整天、以及明天以後
+  // 「未來的時間」包含今天整天、以及明天以後：若已有一筆，直接擋下不能再約第二筆
   const hasFutureBooking = activeBookings.some(b => b.date >= today);
+  // 「過去的歷史紀錄」不含今日：達兩次即視為已用完配額，之後改登記職能候補
+  const pastCount = activeBookings.filter(b => b.date < today).length;
+  const historyExceeded = pastCount >= 2;
   const noShowBlocked = noShowCount >= 2;
-  return { hasFutureBooking, noShowBlocked };
+  return { hasFutureBooking, historyExceeded, noShowBlocked };
 });
 
 // 家長查詢自己的預約（用兒童全名+生日核對）
@@ -137,7 +140,7 @@ exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
 });
 
 /* ============================================================
- * 自動排程：不需要管理員登入，系統於每週一、三、五凌晨自動把
+ * 自動排程：不需要管理員登入，系統於每週二、五凌晨自動把
  * 「未來一個月內」缺少的固定時段補齊。只新增缺少的，不刪除任何既有資料。
  * ============================================================ */
 
@@ -150,6 +153,14 @@ const SLOT_TEMPLATE = [
   { dow: 5, time: '18:50' },
 ];
 
+// 計算「開放到第幾天後」：以最近一次的週二為錨點，開放到「四週後的週二」為止。
+// 例如今天剛好是週二，開放到 28 天後（下下下週二）；如果是週三，錨點回推一天到昨天的週二，開放到 27 天後，以此類推。
+function maxDaysAheadTW(){
+  const todayDow = new Date(todayStrTW() + 'T12:00:00Z').getUTCDay();
+  const daysSinceTuesday = (todayDow - 2 + 7) % 7;
+  return 28 - daysSinceTuesday;
+}
+
 async function createMissingTemplateSlots(){
   const metaRef = db.collection('templateMeta').doc('cancelledOcc');
   const metaDoc = await metaRef.get();
@@ -159,8 +170,9 @@ async function createMissingTemplateSlots(){
   const existingKeys = new Set(existingSnap.docs.map(d => `${d.data().date}|${d.data().time}`));
 
   const todayMs = new Date(todayStrTW() + 'T00:00:00Z').getTime();
+  const maxDays = maxDaysAheadTW();
   const toCreate = [];
-  for (let i = 0; i <= 30; i++) {
+  for (let i = 0; i <= maxDays; i++) {
     const dateStr = toLocalISODateTW(new Date(todayMs + i * 86400000));
     const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
     SLOT_TEMPLATE.filter(t => t.dow === dow).forEach(t => {
@@ -180,10 +192,10 @@ async function createMissingTemplateSlots(){
 }
 
 exports.dailySlotRefresh = functions.pubsub
-  .schedule('every monday,wednesday,friday 03:00')
+  .schedule('every tuesday,friday 03:00')
   .timeZone('Asia/Taipei')
   .onRun(async () => {
     const created = await createMissingTemplateSlots();
-    console.log(`[dailySlotRefresh] 固定時段自動補齊（週一/三/五），本次新增 ${created} 筆`);
+    console.log(`[dailySlotRefresh] 固定時段自動補齊（週二/五），本次新增 ${created} 筆`);
     return null;
   });

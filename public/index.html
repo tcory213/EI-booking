@@ -392,7 +392,15 @@ function toLocalISODate(d){
   return `${y}-${m}-${day}`;
 }
 function todayStr(){ return toLocalISODate(new Date()); }
-function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+30); return toLocalISODate(d); }
+// 以最近一次的週二為錨點，開放到「四週後的週二」為止（跟後端 dailySlotRefresh 邏輯一致）
+function maxDateStr(){
+  const now = new Date();
+  const dow = now.getDay(); // 0=週日...2=週二...
+  const daysSinceTuesday = (dow - 2 + 7) % 7;
+  const d = new Date(now);
+  d.setDate(d.getDate() - daysSinceTuesday + 28);
+  return toLocalISODate(d);
+}
 function minBookableDateStr(){ const d=new Date(); d.setDate(d.getDate()+2); return toLocalISODate(d); }
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
@@ -554,7 +562,7 @@ function renderNoticeCard(){
       <h3>📌 預約評估注意事項</h3>
       <div class="notice-item">
         <div class="notice-heading">1｜預約時段開放說明</div>
-        <div class="notice-sub">系統將於每週一、三、五新上架開放<b>一個月內</b>的時段。若查詢時顯示「無可預約時段」，表示目前已額滿，請於1-2日後再行預約。</div>
+        <div class="notice-sub">系統將於每週二、五新上架開放<b>未來四週內</b>的時段。若查詢時顯示「無可預約時段」，表示目前已額滿，請於每週二、五再行預約。</div>
         <div class="notice-sub">謝謝您的耐心與配合 ❤️</div>
       </div>
       <div class="notice-item">
@@ -754,13 +762,11 @@ function renderSummaryChip(){
 
 function renderStep2(){
   const dates = availableDates();
-  const goWaitlist = state.waitlistMode || dates.length===0;
 
   let body = '';
-  if(goWaitlist){
-    const reason = state.waitlistMode
-      ? '為了讓更多孩子都有接受評估與門診的機會，同一時間每位孩童僅能保留一筆有效預約。<br>目前此孩童已經有一筆預約，因此暫時無法直接選擇新的時段。<br><br>您可以先登記候補，若後續有其他家庭臨時取消、釋出名額，我們會依候補順序主動與您聯繫安排。<br><br>謝謝您的理解，也謝謝您一起讓醫療資源能更妥善地提供給需要的孩子。'
-      : '目前暫無開放時段，將為您登記候補，待有時段開出將優先通知。';
+  if(state.waitlistMode){
+    // 歷史已完成兩次評估/門診(不含今日) -> 登記職能候補
+    const reason = '為了讓更多孩子都有接受評估與門診的機會，每位孩童原則上提供兩次評估／門診機會。<br>目前此孩童過去已完成兩次評估／門診，因此暫時無法直接選擇新的時段。<br><br>您可以先登記候補，若後續有其他家庭臨時取消、釋出名額，我們會依候補順序主動與您聯繫安排。<br><br>謝謝您的理解，也謝謝您一起讓醫療資源能更妥善地提供給需要的孩子。';
     body = `
     <div class="card">
       <div style="text-align:center; padding:6px 0 12px;">
@@ -770,6 +776,22 @@ function renderStep2(){
       <div style="font-size:13px; color:var(--ink-soft); text-align:left; line-height:1.8; padding-bottom:4px;">${reason}</div>
       <button class="btn btn-primary" id="submitWaitlistBtn">送出候補登記</button>
       <button class="btn btn-ghost" id="backStep1Btn">返回上一步</button>
+    </div>`;
+  } else if(state.slotFilter === 'blocked'){
+    // 依評估內容判定目前不開放線上預約(例如斜頸)，不進候補、不重複收件
+    body = `
+    <div class="card confirm-box">
+      <div class="check-circle" style="background:#FFF1EE; color:var(--danger);">🙇‍♀️</div>
+      <p>很抱歉，此項目目前暫不提供線上預約時段，請依前頁說明尋求他院協助，或致電本院洽詢，謝謝您的理解。</p>
+      <button class="btn btn-secondary" id="backStep1Btn">返回上一步</button>
+    </div>`;
+  } else if(dates.length === 0){
+    // 目前所有時段皆已額滿(非永久不開放，只是暫時滿了)
+    body = `
+    <div class="card confirm-box">
+      <div class="check-circle">🙇‍♀️</div>
+      <p>很抱歉目前時段皆已佔滿，<b>無可預約時段</b>。系統將於每週二、五上架新時段，請屆時再行預約，謝謝您的諒解🙇‍♀️</p>
+      <button class="btn btn-secondary" id="backStep1Btn">返回上一步</button>
     </div>`;
   } else {
     const selDate = state.selectedDate && dates.includes(state.selectedDate) ? state.selectedDate : dates[0];
@@ -951,7 +973,7 @@ function renderAdmin(){
     <div class="notice-card">
       <h3>📅 固定門診／評估時段</h3>
       <div style="font-size:13px; line-height:1.7;">${TEMPLATE_LABEL}</div>
-      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週一、三、五凌晨會自動補齊上述固定時段（至未來一個月），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週二、五凌晨會自動補齊上述固定時段（至未來四週內），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
       <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">會清除「尚未被預約」的固定時段後依上方樣板重新產生，已被預約的時段與手動加開的時段不會受影響。</div>
     </div>
     <div class="card">
@@ -963,7 +985,7 @@ function renderAdmin(){
       <label class="field-label">備註（選填）</label>
       <input type="text" id="ns_note" placeholder="例如：限初評 / 醫師X門診" value="${state.newSlot.note}">
       <button class="btn btn-primary" id="addSlotBtn">新增時段</button>
-      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來一個月內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
+      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來四週內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
     </div>
     <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">時段列表（共 ${upcoming.length} 筆）</div>
     ${upcoming.length===0 ? '<div class="empty-state"><div class="emoji">🗓️</div>目前尚無時段，請於上方新增</div>' :
@@ -1264,7 +1286,7 @@ function bindEvents(){
         // 配額檢查仍透過 Cloud Function（涉及查詢其他人的資料，需要保護），
         // 實際寫入時段與建立預約則直接寫 Firestore（純寫入，不涉及讀取他人資料）。
         const qRes = await fx.httpsCallable('checkQuota')({ name: f.name, birth: f.birth });
-        const { hasFutureBooking, noShowBlocked } = qRes.data;
+        const { hasFutureBooking, historyExceeded, noShowBlocked } = qRes.data;
         if(noShowBlocked){
           alert('很抱歉，因先前已有 2 次預約未到紀錄，暫停線上預約資格。如有需要，請直接致電本院為您協助安排。');
           toStep3.disabled = false;
@@ -1272,7 +1294,18 @@ function bindEvents(){
           return;
         }
         if(hasFutureBooking){
-          alert('溫馨提醒\n此孩童目前已有一筆有效預約，同一時間僅能保留一筆預約。若想更改時段，請先取消原本的預約；若想登記候補，我們會在有名額釋出時主動與您聯繫。');
+          alert('溫馨提醒\n此孩童目前已有一筆有效預約，同一時間僅能保留一筆預約，暫時無法再新增預約。\n如需查詢或取消原有預約，請至「查詢／取消預約」處理；如有其他問題，歡迎致電本院。');
+          state.form = { name:'', birth:'', phone:'', issue:'' };
+          state.selectedDate = null; state.selectedSlotId = null;
+          state.screeningAnswers = {}; state.screeningStack = []; state.slotFilter = 'excludeWed';
+          state.screeningScreen = 'welcome';
+          state.view = 'screening';
+          state.patientStep = 1;
+          render();
+          return;
+        }
+        if(historyExceeded){
+          alert('溫馨提醒\n此孩童過去已完成兩次評估／門診，目前請改以候補方式登記。\n若後續有名額釋出，我們會主動與您聯繫，謝謝您的理解與配合。');
           state.waitlistMode = true;
           state.selectedSlotId = null;
           render();
