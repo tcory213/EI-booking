@@ -137,8 +137,8 @@ exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
 });
 
 /* ============================================================
- * 每日自動排程：不需要管理員登入，系統每天固定時間自動把
- * 「未來三個月內」缺少的固定時段補齊。只新增缺少的，不刪除任何既有資料。
+ * 自動排程：不需要管理員登入，系統於每週二、四、六凌晨自動把
+ * 「未來一個月內」缺少的固定時段補齊。只新增缺少的，不刪除任何既有資料。
  * ============================================================ */
 
 const SLOT_TEMPLATE = [
@@ -160,7 +160,7 @@ async function createMissingTemplateSlots(){
 
   const todayMs = new Date(todayStrTW() + 'T00:00:00Z').getTime();
   const toCreate = [];
-  for (let i = 0; i <= 90; i++) {
+  for (let i = 0; i <= 30; i++) {
     const dateStr = toLocalISODateTW(new Date(todayMs + i * 86400000));
     const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
     SLOT_TEMPLATE.filter(t => t.dow === dow).forEach(t => {
@@ -180,10 +180,10 @@ async function createMissingTemplateSlots(){
 }
 
 exports.dailySlotRefresh = functions.pubsub
-  .schedule('every day 03:00')
+  .schedule('every tuesday,thursday,saturday 03:00')
   .timeZone('Asia/Taipei')
   .onRun(async () => {
     const created = await createMissingTemplateSlots();
-    console.log(`[dailySlotRefresh] 每日自動補齊固定時段，本次新增 ${created} 筆`);
+    console.log(`[dailySlotRefresh] 固定時段自動補齊（週二/四/六），本次新增 ${created} 筆`);
     return null;
   });

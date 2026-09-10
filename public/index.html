@@ -130,7 +130,11 @@
   .notice-item{margin-bottom:12px;}
   .notice-item:last-of-type{margin-bottom:0;}
   .notice-item > b{display:block; font-weight:700; font-size:13.5px; color:var(--ink); line-height:1.6; margin-bottom:3px;}
+  .notice-heading{font-weight:800; font-size:14.5px; color:var(--tiffany-deep); line-height:1.5; margin-bottom:4px;}
   .notice-sub{font-size:12.5px; color:var(--ink-soft); line-height:1.7;}
+  .notice-sub + .notice-sub{margin-top:4px;}
+  .notice-list{margin:2px 0 0; padding-left:20px; font-size:12.5px; color:var(--ink-soft); line-height:1.9;}
+  .notice-list li{margin-bottom:2px;}
   .notice-thanks{margin-top:12px; padding-top:10px; border-top:1px dashed #BDEAE7; font-size:12.5px; color:var(--tiffany-deep); font-weight:700; line-height:1.7;}
   .link-btn{background:none; border:none; color:var(--tiffany-deep); font-size:12.5px; font-weight:700; cursor:pointer; padding:4px 0; font-family:inherit;}
 
@@ -387,7 +391,7 @@ function toLocalISODate(d){
   return `${y}-${m}-${day}`;
 }
 function todayStr(){ return toLocalISODate(new Date()); }
-function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+90); return toLocalISODate(d); }
+function maxDateStr(){ const d=new Date(); d.setDate(d.getDate()+30); return toLocalISODate(d); }
 function minBookableDateStr(){ const d=new Date(); d.setDate(d.getDate()+2); return toLocalISODate(d); }
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
@@ -546,23 +550,39 @@ function renderHeader(){
 function renderNoticeCard(){
   return `
     <div class="notice-card">
-      <h3>🌷 兒童評估與門診預約小提醒</h3>
+      <h3>📌 預約評估注意事項</h3>
       <div class="notice-item">
-        <b>1. 請攜帶孩子的健保卡及評估報告（若已於醫院評估）。</b>
+        <div class="notice-heading">1｜預約時段開放說明</div>
+        <div class="notice-sub">系統將於每週二、四、六新上架開放<b>一個月內</b>的時段。若查詢時顯示「無可預約時段」，表示目前已額滿，請於1-2日後再行預約。</div>
+        <div class="notice-sub">謝謝您的耐心與配合 ❤️</div>
       </div>
       <div class="notice-item">
-        <b>2. 預約時段包含約 30-60分鐘的評估及門診。</b>
-        <div class="notice-sub"><b>考量評估、候診及門診銜接時間，建議家長預留約 1.5～2 小時</b>，讓整個流程能更從容、順利地完成。</div>
+        <div class="notice-heading">2｜當日請攜帶以下資料</div>
+        <ul class="notice-list">
+          <li><b>孩子的健保卡</b></li>
+          <li><b>評估報告（若已於醫院完成評估）</b></li>
+        </ul>
       </div>
       <div class="notice-item">
-        <b>3. 顯示的時間為報到時間，提醒家長準時報到唷！附近難停車，若開車請預留較多的停車時間。</b>
-        <div class="notice-sub">因後續仍有其他孩子安排評估及課程，若<b>遲到超過 10 分鐘</b>，可能會影響後續孩子的時段，因此將協助您<b>另行安排合適的評估時間</b>，謝謝您的體諒與配合。</div>
+        <div class="notice-heading">3｜請預留 1.5～2 小時</div>
+        <div class="notice-sub">預約時段包含約 30～60 分鐘的評估及門診。</div>
+        <div class="notice-sub">考量銜接時間，建議家長預留約 1.5～2 小時，讓整個流程能更從容順利。</div>
       </div>
       <div class="notice-item">
-        <div class="notice-sub">*小提醒：為了將有限的醫療資源提供給真正需要的孩子，<b>若已預約但無法前來，請於前一日完成線上取消；若為當日臨時狀況，也請來電告知取消</b>，讓我們能將時段安排給其他等候中的孩子。</div>
-        <div class="notice-sub" style="margin-top:4px;">若預約後未報到且未事先取消，本院將予以紀錄；<b>累計達 2 次者，將取消後續於本院評估及排課的資格</b>。</div>
+        <div class="notice-heading">4｜請依「報到時間」準時抵達</div>
+        <div class="notice-sub">⚠️ 預約畫面顯示的時間為「報到時間」，請家長務必準時報到。</div>
+        <div class="notice-sub">🚗 附近停車較不方便，若開車前來，請務必預留充足的停車時間。</div>
+        <div class="notice-sub">因後續仍有其他孩子安排評估及課程，若<b>遲到超過 10 分鐘，將協助您另行安排合適的評估時間。</b></div>
+        <div class="notice-sub">謝謝您的體諒與配合。</div>
       </div>
-      <div class="notice-thanks">謝謝家長們的理解與配合，讓有限的評估時段能更妥善地安排，也讓每位孩子都能有更完整、安心的評估過程。 💛</div>
+      <div class="notice-item">
+        <div class="notice-heading">5｜無法前來，請務必取消預約</div>
+        <div class="notice-sub">💡 為了將有限的醫療資源提供給真正需要的孩子，若已預約但無法前來，請務必提前取消。</div>
+        <div class="notice-sub">請於一日前完成線上取消，若當日臨時狀況則請來電取消，讓我們能安排給其他候補中的孩子。</div>
+        <div class="notice-sub">⚠️ 未報到及未取消之規定</div>
+        <div class="notice-sub"><b>若預約後未報到，且未事先取消預約，本院將予以紀錄。累計達 2 次者，將取消後續於本院評估及排課的資格。</b></div>
+      </div>
+      <div class="notice-thanks">感謝您的理解、體諒與配合 ❤️</div>
     </div>`;
 }
 
@@ -906,7 +926,7 @@ function renderAdmin(){
     <div class="notice-card">
       <h3>📅 固定門診／評估時段</h3>
       <div style="font-size:13px; line-height:1.7;">${TEMPLATE_LABEL}</div>
-      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統每天凌晨會自動補齊上述固定時段（至未來三個月），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週二、四、六凌晨會自動補齊上述固定時段（至未來一個月），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
       <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">會清除「尚未被預約」的固定時段後依上方樣板重新產生，已被預約的時段與手動加開的時段不會受影響。</div>
     </div>
     <div class="card">
@@ -918,7 +938,7 @@ function renderAdmin(){
       <label class="field-label">備註（選填）</label>
       <input type="text" id="ns_note" placeholder="例如：限初評 / 醫師X門診" value="${state.newSlot.note}">
       <button class="btn btn-primary" id="addSlotBtn">新增時段</button>
-      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來三個月內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
+      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來一個月內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
     </div>
     <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">時段列表（共 ${upcoming.length} 筆）</div>
     ${upcoming.length===0 ? '<div class="empty-state"><div class="emoji">🗓️</div>目前尚無時段，請於上方新增</div>' :
