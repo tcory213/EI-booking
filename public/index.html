@@ -766,7 +766,7 @@ function renderStep2(){
   let body = '';
   if(state.waitlistMode){
     // 歷史已完成兩次評估/門診(不含今日) -> 登記職能候補
-    const reason = '為了讓更多孩子都有接受評估與門診的機會，每位孩童原則上提供兩次評估／門診機會。<br>目前此孩童過去已完成兩次評估／門診，因此暫時無法直接選擇新的時段。<br><br>您可以先登記候補，若後續有其他家庭臨時取消、釋出名額，我們會依候補順序主動與您聯繫安排。<br><br>謝謝您的理解，也謝謝您一起讓醫療資源能更妥善地提供給需要的孩子。';
+    const reason = '很抱歉，由於貴子女過去已在本院進行過兩輪的評估/治療，為將醫療資源公平分配給未曾治療的孩子，我們會將您的孩童歸入候補名單，若有其他孩童臨時取消而釋出時段，將電話通知您。很抱歉，謝謝您的肯定與諒解🙇\u200d♀️';
     body = `
     <div class="card">
       <div style="text-align:center; padding:6px 0 12px;">
@@ -782,7 +782,7 @@ function renderStep2(){
     body = `
     <div class="card confirm-box">
       <div class="check-circle" style="background:#FFF1EE; color:var(--danger);">🙇‍♀️</div>
-      <p>很抱歉，此項目目前暫不提供線上預約時段，請依前頁說明尋求他院協助，或致電本院洽詢，謝謝您的理解。</p>
+      <p>很抱歉目前<b>無可預約時段</b>。因斜頸治療時段較少，若連續數日無法預約，建議請依前頁說明尋求他院協助，謝謝您的理解。</p>
       <button class="btn btn-secondary" id="backStep1Btn">返回上一步</button>
     </div>`;
   } else if(dates.length === 0){
