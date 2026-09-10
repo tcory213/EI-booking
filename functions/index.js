@@ -137,7 +137,7 @@ exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
 });
 
 /* ============================================================
- * 自動排程：不需要管理員登入，系統於每週二、四、六凌晨自動把
+ * 自動排程：不需要管理員登入，系統於每週一、三、五凌晨自動把
  * 「未來一個月內」缺少的固定時段補齊。只新增缺少的，不刪除任何既有資料。
  * ============================================================ */
 
@@ -180,10 +180,10 @@ async function createMissingTemplateSlots(){
 }
 
 exports.dailySlotRefresh = functions.pubsub
-  .schedule('every tuesday,thursday,saturday 03:00')
+  .schedule('every monday,wednesday,friday 03:00')
   .timeZone('Asia/Taipei')
   .onRun(async () => {
     const created = await createMissingTemplateSlots();
-    console.log(`[dailySlotRefresh] 固定時段自動補齊（週二/四/六），本次新增 ${created} 筆`);
+    console.log(`[dailySlotRefresh] 固定時段自動補齊（週一/三/五），本次新增 ${created} 筆`);
     return null;
   });

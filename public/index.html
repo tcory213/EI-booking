@@ -370,6 +370,7 @@ let state = {
   screeningScreen: 'welcome', // welcome | q_main | q_attention | q_langOT | langForm | langConfirm
   screeningStack: [],      // 上一步導覽紀錄，供「返回上一步」使用
   screeningAnswers: {},    // 每一題的作答紀錄，供後台參考
+  slotFilter: 'excludeWed', // excludeWed(排除週三晚上,預設) | wedOnly(僅週三晚上) | blocked(不開放任何時段)
   patientStep: 1,
   form: { name:'', birth:'', phone:'', issue:'' },
   selectedDate: null,
@@ -553,7 +554,7 @@ function renderNoticeCard(){
       <h3>📌 預約評估注意事項</h3>
       <div class="notice-item">
         <div class="notice-heading">1｜預約時段開放說明</div>
-        <div class="notice-sub">系統將於每週二、四、六新上架開放<b>一個月內</b>的時段。若查詢時顯示「無可預約時段」，表示目前已額滿，請於1-2日後再行預約。</div>
+        <div class="notice-sub">系統將於每週一、三、五新上架開放<b>一個月內</b>的時段。若查詢時顯示「無可預約時段」，表示目前已額滿，請於1-2日後再行預約。</div>
         <div class="notice-sub">謝謝您的耐心與配合 ❤️</div>
       </div>
       <div class="notice-item">
@@ -594,7 +595,9 @@ const SCREENING_QUESTIONS = {
       { value:1, label:'很會說話但咬字不清' },
       { value:2, label:'其他語言問題' },
       { value:3, label:'情緒及專注力相關問題' },
-      { value:4, label:'其他' },
+      { value:4, label:'肌力弱、易跌倒、跑跳弱' },
+      { value:5, label:'斜頸' },
+      { value:6, label:'其他' },
     ]
   },
   q_attention: {
@@ -642,6 +645,17 @@ function renderScreeningQuestion(qid){
           </button>
         `).join('')}
       </div>
+      <button class="btn btn-ghost" id="screeningBackBtn">‹ 返回上一步</button>
+    </div>
+  </div>`;
+}
+
+function renderTorticollisNotice(){
+  return `<div class="content">
+    <div class="card confirm-box">
+      <div class="check-circle" style="background:#FFF1EE; color:var(--danger);">🙇‍♀️</div>
+      <p style="text-align:left;">很抱歉由於兒童物理治療人力不足，斜頸僅開放一週一個時段進行治療，若持續顯示「無可預約時段」，還請尋求他院協助，再次致上最高歉意🙇‍♀️</p>
+      <button class="btn btn-primary" id="torticollisNextBtn">下一步</button>
       <button class="btn btn-ghost" id="screeningBackBtn">‹ 返回上一步</button>
     </div>
   </div>`;
@@ -709,14 +723,24 @@ function renderStep1(){
 }
 
 /* ============ RENDER: PATIENT STEP 2 ============ */
+function isWednesday(dateStr){
+  return new Date(dateStr+'T00:00:00').getDay() === 3;
+}
+function applySlotFilter(list){
+  if(state.slotFilter === 'wedOnly') return list.filter(s=>isWednesday(s.date));
+  if(state.slotFilter === 'blocked') return [];
+  // 預設 excludeWed：排除週三晚上的時段
+  return list.filter(s=>!isWednesday(s.date));
+}
 function availableDates(){
   const minD = minBookableDateStr(), maxD = maxDateStr();
-  const list = slots.filter(s=>s.status==='open' && s.date>=minD && s.date<=maxD);
+  const list = applySlotFilter(slots.filter(s=>s.status==='open' && s.date>=minD && s.date<=maxD));
   const openDates = [...new Set(list.map(s=>s.date))].sort();
   return openDates;
 }
 function slotsForDate(dateStr){
-  return slots.filter(s=>s.status==='open' && s.date===dateStr).sort((a,b)=>a.time.localeCompare(b.time));
+  const list = applySlotFilter(slots.filter(s=>s.status==='open' && s.date===dateStr));
+  return list.sort((a,b)=>a.time.localeCompare(b.time));
 }
 
 function renderSummaryChip(){
@@ -753,6 +777,7 @@ function renderStep2(){
     const daySlots = slotsForDate(selDate);
     body = `
     <div class="card">
+      ${state.slotFilter === 'wedOnly' ? '<div class="age-warning" style="margin-bottom:12px;">⚠️ 依據前面的評估內容，目前僅開放週三晚上的時段供選擇。</div>' : ''}
       <label class="field-label" style="margin-top:0;">選擇日期</label>
       <div class="date-scroll" id="dateScroll">
         ${dates.map(d=>{
@@ -926,7 +951,7 @@ function renderAdmin(){
     <div class="notice-card">
       <h3>📅 固定門診／評估時段</h3>
       <div style="font-size:13px; line-height:1.7;">${TEMPLATE_LABEL}</div>
-      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週二、四、六凌晨會自動補齊上述固定時段（至未來一個月），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週一、三、五凌晨會自動補齊上述固定時段（至未來一個月），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
       <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">會清除「尚未被預約」的固定時段後依上方樣板重新產生，已被預約的時段與手動加開的時段不會受影響。</div>
     </div>
     <div class="card">
@@ -1093,6 +1118,7 @@ function render(){
     if(s === 'welcome') html += renderScreeningWelcome();
     else if(s === 'langForm') html += renderLangForm();
     else if(s === 'langConfirm') html += renderLangConfirm();
+    else if(s === 'torticollisNotice') html += renderTorticollisNotice();
     else html += renderScreeningQuestion(s);
   } else {
     if(state.patientStep===1) html += renderStep1();
@@ -1325,7 +1351,7 @@ function bindEvents(){
     if(restartBtn) restartBtn.onclick = ()=>{
       state.form = { name:'', birth:'', phone:'', issue:'' };
       state.selectedDate=null; state.selectedSlotId=null; state.bookingResult=null; state.waitlistMode=false;
-      state.screeningAnswers = {}; state.screeningStack = [];
+      state.screeningAnswers = {}; state.screeningStack = []; state.slotFilter = 'excludeWed';
       state.screeningScreen = 'welcome';
       state.view = 'screening';
       state.patientStep = 1;
@@ -1342,7 +1368,8 @@ function goScreen(next){
 }
 
 // 問卷結束，進入正式預約表單（同時記錄上一步，供表單頁「返回上一步」使用）
-function finishScreening(cur){
+function finishScreening(cur, filter){
+  state.slotFilter = filter || 'excludeWed';
   state.screeningStack.push(cur);
   state.view = 'patient';
   state.patientStep = 1;
@@ -1374,7 +1401,9 @@ function bindScreeningEvents(){
       if(cur === 'q_main'){
         if(val===1) goScreen('q_attention');
         else if(val===2) goScreen('q_langOT');
-        else finishScreening(cur);
+        else if(val===4) finishScreening(cur, 'wedOnly'); // 肌力弱、易跌倒、跑跳弱：僅開放週三晚上
+        else if(val===5) goScreen('torticollisNotice'); // 斜頸：先顯示提示頁
+        else finishScreening(cur); // 情緒及專注力相關問題／其他
       } else if(cur === 'q_attention'){
         if(val===1) finishScreening(cur);
         else goScreen('langForm');
@@ -1384,6 +1413,11 @@ function bindScreeningEvents(){
       }
     };
   });
+
+  const torticollisNext = document.getElementById('torticollisNextBtn');
+  if(torticollisNext) torticollisNext.onclick = ()=>{
+    finishScreening('torticollisNotice', 'blocked'); // 斜頸：不開放任何時段，直接進入候補
+  };
 
   // 語言候補表單欄位（跟正式預約表單共用同一組 state.form）
   if(state.screeningScreen === 'langForm'){
@@ -1430,6 +1464,7 @@ function bindScreeningEvents(){
     state.form = { name:'', birth:'', phone:'', issue:'' };
     state.screeningAnswers = {};
     state.screeningStack = [];
+    state.slotFilter = 'excludeWed';
     state.screeningScreen = 'welcome';
     state.view = 'screening';
     render();
