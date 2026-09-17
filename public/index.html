@@ -253,7 +253,7 @@
     display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;
   }
   .admin-header .atitle{font-weight:900; font-size:16px;}
-  .tab-row{display:flex; gap:8px; margin-bottom:16px;}
+  .tab-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;}
   .tab-btn{
     flex:1; text-align:center; padding:10px 4px; border-radius:12px; border:1.5px solid var(--border);
     font-size:13.5px; font-weight:700; color:var(--ink-soft); background:#fff; cursor:pointer;
@@ -379,6 +379,8 @@ let state = {
   bookingResult: null,
   showAdminLogin: false,
   adminTab: 'slots',
+  adminShowPast: false,   // 時段管理分頁：是否正在瀏覽過去時段
+  historySearch: { name:'', birth:'', results:[], searched:false }, // 後台依姓名+生日查詢歷史紀錄
   newSlot: { date:'', time:'', note:'' },
   lookup: { name:'', birth:'', results:[], waitlistResults:[], languageWaitlistResults:[], searched:false },
 };
@@ -404,6 +406,26 @@ function maxDateStr(){
 function minBookableDateStr(){ const d=new Date(); d.setDate(d.getDate()+2); return toLocalISODate(d); }
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
+
+// 匯出單一個案為橫排五格CSV：評估日期,(空白),姓名,生日,電話（Excel可直接開啟）
+function csvEscape(v){
+  const s = String(v==null?'':v);
+  if(/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+  return s;
+}
+function downloadCaseCsv(date, name, birth, phone){
+  const row = [date, '', name, birth, phone].map(csvEscape).join(',');
+  const csv = '\uFEFF' + row + '\r\n'; // 加UTF-8 BOM，避免Excel開啟時中文變亂碼
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `評估紀錄_${name}_${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 function calcAge(birthStr){
   if(!birthStr) return null;
@@ -978,6 +1000,10 @@ function renderAdmin(){
       const d = k.split('|')[0];
       return d>=today2 && d<=maxD2;
     }).sort();
+    const showPast = !!state.adminShowPast;
+    const listSlots = showPast
+      ? slots.filter(s=>s.date<today).sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : b.date.localeCompare(a.date))
+      : upcoming;
     tabContent = `
     <div class="notice-card">
       <h3>📅 固定門診／評估時段</h3>
@@ -985,6 +1011,7 @@ function renderAdmin(){
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週二、五凌晨會自動補齊上述固定時段（至未來四週內），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
       <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">會清除「尚未被預約」的固定時段後依上方樣板重新產生，已被預約的時段與手動加開的時段不會受影響。</div>
     </div>
+    ${!showPast ? `
     <div class="card">
       <label class="field-label" style="margin-top:0;">手動加開其他時段</label>
       <div style="display:flex; gap:8px;">
@@ -995,13 +1022,16 @@ function renderAdmin(){
       <input type="text" id="ns_note" placeholder="例如：限初評 / 醫師X門診" value="${state.newSlot.note}">
       <button class="btn btn-primary" id="addSlotBtn">新增時段</button>
       <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來四週內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
+    </div>` : ''}
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:4px 4px 10px;">
+      <div style="font-weight:800; font-size:14px;">${showPast ? '過去時段' : '時段列表'}（共 ${listSlots.length} 筆）</div>
+      <button class="btn btn-ghost btn-small" id="togglePastBtn" style="margin:0; width:auto; padding:6px 12px;">${showPast ? '‹ 返回目前時段' : '查看過去時段 ›'}</button>
     </div>
-    <div style="font-weight:800; font-size:14px; margin:4px 4px 10px;">時段列表（共 ${upcoming.length} 筆）</div>
-    ${upcoming.length===0 ? '<div class="empty-state"><div class="emoji">🗓️</div>目前尚無時段，請於上方新增</div>' :
+    ${listSlots.length===0 ? `<div class="empty-state"><div class="emoji">🗓️</div>${showPast ? '查無過去時段紀錄' : '目前尚無時段，請於上方新增'}</div>` :
       (function(){
         let out = '';
         let lastDate = null;
-        upcoming.forEach(s=>{
+        listSlots.forEach(s=>{
           if(s.date !== lastDate){
             out += `<div class="day-divider"><span>${fmtDateFull(s.date)}</span></div>`;
             lastDate = s.date;
@@ -1011,7 +1041,7 @@ function renderAdmin(){
         return out;
       })()
     }
-    ${activeCancelled.length>0 ? `
+    ${(!showPast && activeCancelled.length>0) ? `
     <div style="font-weight:800; font-size:14px; margin:18px 4px 10px;">已停開的固定時段（${activeCancelled.length}）</div>
     ${activeCancelled.map(k=>{
       const [d,t] = k.split('|');
@@ -1056,6 +1086,49 @@ function renderAdmin(){
         </div>
       </div>`).join('')}
     `;
+  } else if(state.adminTab==='history'){
+    const hs = state.historySearch;
+    let historyResultsHtml = '';
+    if(hs.searched){
+      if(hs.results.length===0){
+        historyResultsHtml = '<div class="empty-state"><div class="emoji">🔍</div>查無符合的歷史紀錄</div>';
+      } else {
+        const sorted = [...hs.results].sort((a,b)=> b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+        historyResultsHtml = sorted.map(b=>{
+          const isPast = b.date < today;
+          let statusBadge = '';
+          if(b.status==='cancelled') statusBadge = '<span class="badge" style="background:#EEE; color:#888;">已取消</span>';
+          else if(b.noShow) statusBadge = '<span class="badge badge-booked">爽約</span>';
+          else if(isPast) statusBadge = '<span class="badge" style="background:#EEE; color:#888;">已完成</span>';
+          else statusBadge = '<span class="badge badge-booked">即將到來</span>';
+          return `<div class="slot-row">
+            <div class="top-line">
+              <div class="dt">${fmtDateFull(b.date)}　${b.time}</div>
+              ${statusBadge}
+            </div>
+            <div class="note" style="margin-top:4px;">電話：${b.phone}${b.altPhone ? `（備用：${b.altPhone}）` : ''}</div>
+            ${b.issue ? `<div class="note">主要問題：${b.issue}</div>` : ''}
+            <div class="row-actions">
+              <button class="btn btn-secondary btn-small" data-export-csv data-e-date="${b.date}" data-e-name="${b.name}" data-e-birth="${b.birth}" data-e-phone="${b.phone}">📤 匯出</button>
+            </div>
+          </div>`;
+        }).join('');
+      }
+    }
+    tabContent = `
+    <div class="notice-card">
+      <h3>🔍 依姓名＋生日查詢歷史紀錄</h3>
+      <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">查詢某個孩子完整的預約紀錄，包含已過期、已取消、已標記爽約的紀錄，不受「時段管理」只顯示未來時段的限制。</div>
+    </div>
+    <div class="card">
+      <label class="field-label" style="margin-top:0;">兒童全名</label>
+      <input type="text" id="hs_name" placeholder="請輸入兒童全名" value="${hs.name}">
+      <label class="field-label">兒童生日</label>
+      <input type="date" id="hs_birth" max="${today}" value="${hs.birth}">
+      <button class="btn btn-primary" id="historySearchBtn">查詢</button>
+    </div>
+    ${hs.searched ? `<div style="font-weight:800; font-size:14px; margin:14px 4px 10px;">查詢結果（共 ${hs.results.length} 筆）</div>${historyResultsHtml}` : ''}
+    `;
   } else {
     tabContent = `
     <div class="notice-card">
@@ -1093,6 +1166,7 @@ function renderAdmin(){
       <div class="tab-btn ${state.adminTab==='slots'?'active':''}" data-tab="slots">時段</div>
       <div class="tab-btn ${state.adminTab==='waitlist'?'active':''}" data-tab="waitlist">職能候補（${waitlist.length}）</div>
       <div class="tab-btn ${state.adminTab==='langWaitlist'?'active':''}" data-tab="langWaitlist">語言候補（${languageWaitlist.length}）</div>
+      <div class="tab-btn ${state.adminTab==='history'?'active':''}" data-tab="history">歷史查詢</div>
       <div class="tab-btn ${state.adminTab==='audit'?'active':''}" data-tab="audit">稽核</div>
     </div>
     ${tabContent}
@@ -1116,6 +1190,7 @@ function renderSlotRow(s){
       ${b.noShow
         ? `<button class="btn btn-secondary btn-small" data-unmark-noshow="${s.id}">取消爽約標記</button>`
         : `<button class="btn btn-secondary btn-small" data-mark-noshow="${s.id}">標記爽約</button>`}
+      <button class="btn btn-secondary btn-small" data-export-csv data-e-date="${s.date}" data-e-name="${b.name}" data-e-birth="${b.birth}" data-e-phone="${b.phone}">📤 匯出</button>
     </div>`;
   } else {
     patientBlock = `<div class="row-actions">
@@ -1624,10 +1699,23 @@ function bindAdminEvents(){
     render();
   };
 
+  // 匯出單一個案為CSV（時段列表、歷史查詢結果共用）
+  document.querySelectorAll('[data-export-csv]').forEach(el=>{
+    el.onclick = ()=>{
+      downloadCaseCsv(
+        el.getAttribute('data-e-date'),
+        el.getAttribute('data-e-name'),
+        el.getAttribute('data-e-birth'),
+        el.getAttribute('data-e-phone')
+      );
+    };
+  });
+
   document.querySelectorAll('.tab-btn').forEach(el=>{
     el.onclick = async ()=>{
       const tab = el.getAttribute('data-tab');
       state.adminTab = tab;
+      state.adminShowPast = false;
       if(tab === 'audit'){
         await loadAuditLogs();
       }
@@ -1635,7 +1723,44 @@ function bindAdminEvents(){
     };
   });
 
+  if(state.adminTab==='history'){
+    const hs = state.historySearch;
+    const nameEl = document.getElementById('hs_name');
+    const birthEl = document.getElementById('hs_birth');
+    if(nameEl) nameEl.addEventListener('input', e=>{ hs.name = e.target.value; });
+    if(birthEl) birthEl.addEventListener('change', e=>{ hs.birth = e.target.value; });
+
+    const searchBtn = document.getElementById('historySearchBtn');
+    if(searchBtn) searchBtn.onclick = async ()=>{
+      if(!hs.name.trim()){ showToast('請填寫兒童全名'); return; }
+      if(!hs.birth){ showToast('請選擇兒童生日'); return; }
+      searchBtn.disabled = true;
+      searchBtn.textContent = '查詢中…';
+      try{
+        const snap = await db.collection('bookings')
+          .where('name','==', hs.name.trim())
+          .where('birth','==', hs.birth)
+          .get();
+        hs.results = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        hs.searched = true;
+      }catch(e){
+        console.error(e);
+        if(isAuthError(e)){ await handleAuthExpired(); return; }
+        showToast('查詢失敗，請重試');
+      }
+      searchBtn.disabled = false;
+      searchBtn.textContent = '查詢';
+      render();
+    };
+  }
+
   if(state.adminTab==='slots'){
+    const togglePastBtn = document.getElementById('togglePastBtn');
+    if(togglePastBtn) togglePastBtn.onclick = ()=>{
+      state.adminShowPast = !state.adminShowPast;
+      render();
+    };
+
     const dEl = document.getElementById('ns_date');
     const tEl = document.getElementById('ns_time');
     const nEl = document.getElementById('ns_note');
