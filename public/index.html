@@ -413,8 +413,21 @@ function csvEscape(v){
   if(/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
   return s;
 }
+// 西元日期(YYYY-MM-DD)轉民國年日期(例如 2020-05-15 -> 109/05/15)
+function toMinguoDate(dateStr){
+  if(!dateStr) return '';
+  const parts = String(dateStr).split('-');
+  if(parts.length !== 3) return dateStr;
+  const y = parseInt(parts[0], 10);
+  if(isNaN(y)) return dateStr;
+  const minguoYear = y - 1911;
+  return `${minguoYear}/${parts[1]}/${parts[2]}`;
+}
 function downloadCaseCsv(date, name, birth, phone){
-  const row = [date, '', name, birth, phone].map(csvEscape).join(',');
+  const minguoBirth = toMinguoDate(birth);
+  // 用 ="..." 這個Excel公式寫法，強制該儲存格被視為文字，避免電話開頭的0被吃掉
+  const phoneCell = '="' + String(phone||'').replace(/"/g,'""') + '"';
+  const row = [date, '', name, minguoBirth, phoneCell].map(csvEscape).join(',');
   const csv = '\uFEFF' + row + '\r\n'; // 加UTF-8 BOM，避免Excel開啟時中文變亂碼
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
