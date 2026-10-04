@@ -850,7 +850,7 @@ function renderStep2(){
   let body = '';
   if(state.waitlistMode){
     // 歷史已完成兩次評估/門診(不含今日) -> 登記職能候補
-    const reason = '很抱歉，由於貴子女過去已在本院進行過兩輪的評估/治療，為將醫療資源公平分配給未曾治療的孩子，我們會將您的孩童歸入候補名單，若有其他孩童臨時取消而釋出時段，將電話通知您。很抱歉，謝謝您的肯定與諒解🙇\u200d♀️';
+    const reason = '很抱歉，由於貴子女過去已在本院進行過兩輪的評估/治療（或預約後未報到），為將醫療資源公平分配給未曾治療的孩子，我們會將您的孩童歸入候補名單，若有其他孩童臨時取消而釋出時段，將電話通知您。很抱歉，謝謝您的肯定與諒解🙇\u200d♀️';
     body = `
     <div class="card">
       <div style="text-align:center; padding:6px 0 12px;">
@@ -1449,7 +1449,7 @@ function bindEvents(){
           return;
         }
         if(historyExceeded){
-          alert('溫馨提醒\n此孩童過去已完成兩次評估／門診，目前請改以候補方式登記。\n若後續有名額釋出，我們會主動與您聯繫，謝謝您的理解與配合。');
+          alert('溫馨提醒\n此孩童過去已完成兩次評估／門診（或預約後未報到），目前請改以候補方式登記。\n若後續有名額釋出，我們會主動與您聯繫，謝謝您的理解與配合。');
           state.waitlistMode = true;
           state.selectedSlotId = null;
           render();
