@@ -150,6 +150,12 @@
   }
   input:focus, textarea:focus, select:focus{outline:none; border-color:var(--tiffany);}
   textarea{resize:vertical; min-height:72px;}
+  .check-list{display:flex; flex-direction:column; gap:8px; margin-top:6px;}
+  .check-item{
+    display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1.5px solid var(--border);
+    border-radius:12px; background:#FAFEFE; font-size:13.5px; line-height:1.5; color:var(--ink); cursor:pointer;
+  }
+  .check-item input[type=checkbox]{width:18px; height:18px; margin:2px 0 0; flex-shrink:0; accent-color:var(--tiffany);}
   .age-hint{
     margin-top:6px; font-size:12.5px; color:var(--tiffany-dark); font-weight:700;
     display:none;
@@ -372,7 +378,7 @@ let state = {
   screeningAnswers: {},    // 每一題的作答紀錄，供後台參考
   slotFilter: 'excludeWed', // excludeWed(排除週三晚上,預設) | wedOnly(僅週三晚上) | blocked(不開放任何時段)
   patientStep: 1,
-  form: { name:'', birth:'', phone:'', altPhone:'', issue:'' },
+  form: { name:'', birth:'', phone:'', altPhone:'', issue:'', issueTags:[] },
   selectedDate: null,
   selectedSlotId: null,
   waitlistMode: false,     // true if quota exceeded or no slots at all -> goes to waitlist
@@ -406,6 +412,38 @@ function maxDateStr(){
 function minBookableDateStr(){ const d=new Date(); d.setDate(d.getDate()+2); return toLocalISODate(d); }
 
 function normPhone(p){ return (p||'').replace(/\D/g,''); }
+
+// 「主要問題」可複選項目（評估填寫單）
+const ISSUE_OPTIONS = [
+  '注意力較短，易被環境影響',
+  '放空',
+  '衝動、無法等待指令',
+  '動個不停、到處亂摸',
+  '很容易累，手/腿痠',
+  '常找不到東西、看不出相似圖/字',
+  '書寫慢且辛苦',
+  '手的操作能力比較差',
+  '走路不穩、容易跌倒',
+  '動作笨拙、協調性較差',
+  '學習、理解能力較慢',
+  '詞彙少、不太會表達需求',
+  '聽不懂或不會遵從指令',
+  '反覆做固定動作',
+  '堅持度高、不喜改變',
+  '生氣需安撫很久(20分鐘以上)',
+  '生氣打人',
+  '不太與人互動',
+  '眼神接觸較少',
+  '叫名字反應少',
+  '感覺敏感，不喜歡特定材質'
+];
+// 把勾選項目與自由填寫文字合併成一段，存進資料庫的 issue 欄位（後台、候補、歷史查詢都沿用這個欄位顯示）
+function composeIssue(f){
+  const tags = (f.issueTags||[]).join('；');
+  const text = (f.issue||'').trim();
+  if(tags && text) return tags + '；其他：' + text;
+  return tags || text;
+}
 
 // 匯出單一個案為橫排五格CSV：評估日期,(空白),姓名,生日,電話（Excel可直接開啟）
 function csvEscape(v){
@@ -764,8 +802,10 @@ function renderStep1(){
       <input type="tel" id="f_altPhone" placeholder="不限格式，例如市話或其他聯絡人電話" value="${f.altPhone||''}">
 
       <label class="field-label">主要問題 <span class="req">*</span></label>
-      <textarea id="f_issue" placeholder="請簡述孩子目前主要的發展或就診問題">${f.issue}</textarea>
-      <div style="background:var(--tiffany-light); border-radius:10px; padding:8px 10px; margin-top:6px; font-size:11.5px; color:var(--ink-soft); line-height:1.6;">範例：上課會找同學講話、還不太會跳、學校初篩精細動作沒有達標等等。若能詳細描述更佳。</div>
+      <div class="check-list">
+        ${ISSUE_OPTIONS.map((opt,i)=>`<label class="check-item"><input type="checkbox" data-issue-tag="${i}" ${(f.issueTags||[]).includes(opt)?'checked':''}><span>${opt}</span></label>`).join('')}
+      </div>
+      <textarea id="f_issue" placeholder="或詳述其他未列出的問題" style="margin-top:10px;">${f.issue}</textarea>
 
       <button class="btn btn-primary" id="toStep2Btn" ${f.birth && isOverAgeLimit(f.birth) ? 'disabled':''}>下一步：選擇時段</button>
     </div>
@@ -1333,6 +1373,12 @@ function bindEvents(){
     if(nameEl) nameEl.addEventListener('input', e=>{ state.form.name = e.target.value; });
     if(phoneEl) phoneEl.addEventListener('input', e=>{ state.form.phone = e.target.value; });
     if(issueEl) issueEl.addEventListener('input', e=>{ state.form.issue = e.target.value; });
+    document.querySelectorAll('[data-issue-tag]').forEach(cb=>{
+      cb.addEventListener('change', ()=>{
+        state.form.issueTags = Array.from(document.querySelectorAll('[data-issue-tag]:checked'))
+          .map(el=>ISSUE_OPTIONS[parseInt(el.getAttribute('data-issue-tag'),10)]);
+      });
+    });
     if(birthEl) birthEl.addEventListener('change', e=>{
       state.form.birth = e.target.value;
       if(state.form.birth && isOverAgeLimit(state.form.birth)){
@@ -1348,7 +1394,7 @@ function bindEvents(){
       if(isOverAgeLimit(f.birth)){ alert(AGE_LIMIT_MSG); return; }
       const phoneDigits = f.phone.replace(/\D/g,'');
       if(!f.phone.trim() || phoneDigits.length !== 10){ showToast('請填寫正確的聯絡手機（需為10碼數字）'); return; }
-      if(!f.issue.trim()){ showToast('請填寫主要問題'); return; }
+      if(!(f.issueTags||[]).length && !f.issue.trim()){ showToast('請至少勾選一項，或填寫主要問題'); return; }
       // 配額是否超過留到「確認預約」當下才由伺服器驗證，這裡不呼叫雲端函式，
       // 讓下一步的畫面切換是即時的，不用等網路來回。
       state.waitlistMode = false;
@@ -1393,7 +1439,7 @@ function bindEvents(){
         }
         if(hasFutureBooking){
           alert('溫馨提醒\n此孩童目前已有一筆有效預約，同一時間僅能保留一筆預約，暫時無法再新增預約。\n如需查詢或取消原有預約，請至「查詢／取消預約」處理；如有其他問題，歡迎致電本院。');
-          state.form = { name:'', birth:'', phone:'', altPhone:'', issue:'' };
+          state.form = { name:'', birth:'', phone:'', altPhone:'', issue:'', issueTags:[] };
           state.selectedDate = null; state.selectedSlotId = null;
           state.screeningAnswers = {}; state.screeningStack = []; state.slotFilter = 'excludeWed';
           state.screeningScreen = 'welcome';
@@ -1421,7 +1467,7 @@ function bindEvents(){
           tx.update(slotRef, { status:'booked' });
           tx.set(bookingRef, {
             slotId: slot.id, name:f.name, birth:f.birth, age, phone:f.phone, altPhone:f.altPhone||'',
-            phoneNorm: normPhone(f.phone), issue:f.issue,
+            phoneNorm: normPhone(f.phone), issue: composeIssue(f),
             status:'active', bookedAt: Date.now(), noShow:false,
             date: s.date, time: s.time, note: s.note || '',
             screeningAnswers: { ...state.screeningAnswers }
@@ -1429,7 +1475,7 @@ function bindEvents(){
           return { date: s.date, time: s.time, note: s.note || '' };
         });
         slot.status = 'booked';
-        state.bookingResult = { type:'booking', name:f.name, age, phone:f.phone, issue:f.issue, ...result };
+        state.bookingResult = { type:'booking', name:f.name, age, phone:f.phone, issue: composeIssue(f), ...result };
         state.patientStep = 3;
         render();
       }catch(e){
@@ -1462,9 +1508,9 @@ function bindEvents(){
         const age = calcAge(f.birth);
         await db.collection('waitlist').add({
           name:f.name, birth:f.birth, age, phone:f.phone, altPhone:f.altPhone||'', phoneNorm: normPhone(f.phone),
-          issue:f.issue, submittedAt:Date.now()
+          issue: composeIssue(f), submittedAt:Date.now()
         });
-        state.bookingResult = { type:'waitlist', name:f.name, age, phone:f.phone, issue:f.issue };
+        state.bookingResult = { type:'waitlist', name:f.name, age, phone:f.phone, issue: composeIssue(f) };
         state.patientStep = 3;
         render();
       }catch(e){
@@ -1480,7 +1526,7 @@ function bindEvents(){
   if(state.patientStep===3){
     const restartBtn = document.getElementById('restartBtn');
     if(restartBtn) restartBtn.onclick = ()=>{
-      state.form = { name:'', birth:'', phone:'', altPhone:'', issue:'' };
+      state.form = { name:'', birth:'', phone:'', altPhone:'', issue:'', issueTags:[] };
       state.selectedDate=null; state.selectedSlotId=null; state.bookingResult=null; state.waitlistMode=false;
       state.screeningAnswers = {}; state.screeningStack = []; state.slotFilter = 'excludeWed';
       state.screeningScreen = 'welcome';
@@ -1595,7 +1641,7 @@ function bindScreeningEvents(){
 
   const restartScreening = document.getElementById('restartScreeningBtn');
   if(restartScreening) restartScreening.onclick = ()=>{
-    state.form = { name:'', birth:'', phone:'', altPhone:'', issue:'' };
+    state.form = { name:'', birth:'', phone:'', altPhone:'', issue:'', issueTags:[] };
     state.screeningAnswers = {};
     state.screeningStack = [];
     state.slotFilter = 'excludeWed';
