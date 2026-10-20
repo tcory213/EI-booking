@@ -513,8 +513,11 @@ function initRocDates(){
       Array.from(dSel.options).forEach(o=>{ if(o.value) o.hidden = parseInt(o.value,10) > max; });
       if(parseInt(dSel.value,10) > max) dSel.value = String(max);
     };
-    const onChange = ()=>{
+    const onChange = (ev)=>{
+      // 下拉本身的 change 事件會往上冒泡到外層，導致外層誤收到「只選了年」的半成品值並重畫；這裡攔下
+      if(ev && ev.stopPropagation) ev.stopPropagation();
       fit();
+      const prev = box.getAttribute('data-value') || '';
       let val = '';
       if(ySel.value && mSel.value && dSel.value){
         val = `${ySel.value}-${String(mSel.value).padStart(2,'0')}-${String(dSel.value).padStart(2,'0')}`;
@@ -525,7 +528,8 @@ function initRocDates(){
         }
       }
       box.setAttribute('data-value', val);
-      box.dispatchEvent(new Event('change'));
+      // 三個都選齊才通知外層；只選了一部分時不重畫（否則已選的值會被洗掉）
+      if(val || prev) box.dispatchEvent(new Event('change'));
     };
     [ySel,mSel,dSel].forEach(el=>el.addEventListener('change', onChange));
     fit();
