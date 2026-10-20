@@ -149,6 +149,12 @@
     font-family:inherit;
   }
   input:focus, textarea:focus, select:focus{outline:none; border-color:var(--tiffany);}
+  .roc-date{display:flex; gap:6px; align-items:center;}
+  .roc-date select{padding:12px 6px; flex:1; min-width:0;}
+  .roc-date select.roc-y{flex:1.5;}
+  .roc-date .roc-unit{font-size:13px; color:var(--ink-soft); flex-shrink:0;}
+  .wait-warn{background:#FFF1EE; border:1.5px solid var(--coral); color:#B8442B; border-radius:12px; padding:12px 14px; font-size:13.5px; line-height:1.7; text-align:left; margin:0 0 16px; font-weight:500;}
+  .wait-warn b{font-weight:900;}
   textarea{resize:vertical; min-height:72px;}
   .check-list{display:flex; flex-direction:column; gap:8px; margin-top:6px;}
   .check-item{
@@ -478,6 +484,56 @@ function downloadCaseCsv(date, name, birth, phone){
   URL.revokeObjectURL(url);
 }
 
+/* ===== 民國年日期選擇器（三個下拉：年／月／日），內部仍以 YYYY-MM-DD 存放 ===== */
+function rocDateInput(id, value){
+  const curY = new Date().getFullYear();
+  const v = /^\d{4}-\d{2}-\d{2}$/.test(value||'') ? value : '';
+  const [vy, vm, vd] = v ? v.split('-').map(Number) : [0,0,0];
+  let ys = '<option value="">年</option>';
+  for(let y = curY; y >= curY - 30; y--) ys += `<option value="${y}"${y===vy?' selected':''}>${y-1911}</option>`;
+  let ms = '<option value="">月</option>';
+  for(let m = 1; m <= 12; m++) ms += `<option value="${m}"${m===vm?' selected':''}>${m}</option>`;
+  let ds = '<option value="">日</option>';
+  for(let d = 1; d <= 31; d++) ds += `<option value="${d}"${d===vd?' selected':''}>${d}</option>`;
+  return `<div class="roc-date" id="${id}" data-value="${v}">
+    <select class="roc-y" aria-label="民國年">${ys}</select><span class="roc-unit">年</span>
+    <select class="roc-m" aria-label="月">${ms}</select><span class="roc-unit">月</span>
+    <select class="roc-d" aria-label="日">${ds}</select><span class="roc-unit">日</span>
+  </div>`;
+}
+function initRocDates(){
+  document.querySelectorAll('.roc-date').forEach(box=>{
+    const ySel = box.querySelector('.roc-y'), mSel = box.querySelector('.roc-m'), dSel = box.querySelector('.roc-d');
+    Object.defineProperty(box, 'value', { get(){ return box.getAttribute('data-value') || ''; }, configurable:true });
+    const fit = ()=>{
+      // 依年月調整該月天數（例如 2 月、閏年）
+      const y = parseInt(ySel.value,10), m = parseInt(mSel.value,10);
+      if(!y || !m) return;
+      const max = new Date(y, m, 0).getDate();
+      Array.from(dSel.options).forEach(o=>{ if(o.value) o.hidden = parseInt(o.value,10) > max; });
+      if(parseInt(dSel.value,10) > max) dSel.value = String(max);
+    };
+    const onChange = ()=>{
+      fit();
+      let val = '';
+      if(ySel.value && mSel.value && dSel.value){
+        val = `${ySel.value}-${String(mSel.value).padStart(2,'0')}-${String(dSel.value).padStart(2,'0')}`;
+        if(val > todayStr()){
+          showToast('生日不可晚於今天');
+          val = '';
+          ySel.value = ''; mSel.value = ''; dSel.value = '';
+        }
+      }
+      box.setAttribute('data-value', val);
+      box.dispatchEvent(new Event('change'));
+    };
+    [ySel,mSel,dSel].forEach(el=>el.addEventListener('change', onChange));
+    fit();
+  });
+}
+
+function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 function calcAge(birthStr){
   if(!birthStr) return null;
   const b = new Date(birthStr+'T00:00:00');
@@ -619,10 +675,9 @@ function renderHeader(){
   <div class="header">
     <div class="header-top">
       <div>
-        <div class="clinic-name">EI BOOKING</div>
+        <div class="clinic-name" id="gearBtn" style="cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none;">EI BOOKING</div>
         <div class="title">家歡診所兒童早療暨<br>門診評估預約表</div>
       </div>
-      <button class="gear-btn" id="gearBtn" title="院所後台">⚙</button>
     </div>
     ${state.view==='patient' ? renderFootprints() : ''}
   </div>`;
@@ -753,7 +808,7 @@ function renderLangForm(){
       <input type="text" id="f_name" placeholder="請輸入兒童全名" value="${f.name}">
 
       <label class="field-label">兒童生日 <span class="req">*</span></label>
-      <input type="date" id="f_birth" max="${todayStr()}" value="${f.birth}">
+      ${rocDateInput('f_birth', f.birth)}
       <div class="age-hint" id="ageHint" style="display:${f.birth ? 'block':'none'}">目前年齡：${calcAge(f.birth)||''}</div>
 
       <label class="field-label">聯絡手機 <span class="req">*</span></label>
@@ -773,10 +828,12 @@ function renderLangForm(){
 }
 
 function renderLangConfirm(){
+  const r = state.langResult || { name:state.form.name, birth:state.form.birth, phone:state.form.phone };
   return `<div class="content"><div class="card confirm-box">
     <div class="check-circle">📋</div>
     <h2>已完成登記</h2>
-    <p>您好，初步分析您的孩子需要語言評估和語言治療為主。您的資料已完成登入待排名單。待排時間平均為 6 個月，預約到會以電話通知。請耐心等候喔 ❤️</p>
+    <div class="wait-warn">提醒您，須候補到才會聯絡，不會提前電話給您喔。通知順序也會參考個案狀況，不完全以登記時間為準。候補時間常需<b>半年以上</b>，語言治療至少<b>一年</b>，建議可以同時至其他院所進行課程。另外也可從首頁右上角點選查詢，鍵入基本資料後確認已在本院候補名單中。感謝您</div>
+    <p>您好，初步分析您的孩子需要語言評估和語言治療為主。您的資料已完成登入待排名單（${esc(r.name)}、${toMinguoDate(r.birth)}、${esc(r.phone)}）。</p>
     <button class="btn btn-secondary" id="restartScreeningBtn">返回首頁</button>
   </div></div>`;
 }
@@ -791,7 +848,7 @@ function renderStep1(){
       <input type="text" id="f_name" placeholder="請輸入兒童全名" value="${f.name}">
 
       <label class="field-label">兒童生日 <span class="req">*</span></label>
-      <input type="date" id="f_birth" max="${todayStr()}" value="${f.birth}">
+      ${rocDateInput('f_birth', f.birth)}
       <div class="age-hint" id="ageHint" style="display:${f.birth && !isOverAgeLimit(f.birth) ? 'block':'none'}">目前年齡：${calcAge(f.birth)||''}</div>
       <div class="age-warning" id="ageWarning" style="display:${f.birth && isOverAgeLimit(f.birth) ? 'block':'none'}">⚠️ ${AGE_LIMIT_MSG}</div>
 
@@ -915,7 +972,8 @@ function renderStep3(){
     return `<div class="content"><div class="card confirm-box">
       <div class="check-circle">📋</div>
       <h2>已完成候補登記</h2>
-      <p>已收到 ${r.name} 的候補資料，若有時段開出或有個案臨時取消，本院將以電話 ${r.phone} 主動聯繫。</p>
+      <div class="wait-warn">提醒您，須候補到才會聯絡，不會提前電話給您喔。通知順序也會參考個案狀況，不完全以登記時間為準。候補時間常需<b>半年以上</b>，語言治療至少<b>一年</b>，建議可以同時至其他院所進行課程。另外也可從首頁右上角點選查詢，鍵入基本資料後確認已在本院候補名單中。感謝您</div>
+      <p>您的資料已完成登入待排名單（${esc(r.name)}、${toMinguoDate(r.birth)}、${esc(r.phone)}）。</p>
       <div class="detail-row"><span class="k">兒童姓名</span><span class="v">${r.name}</span></div>
       <div class="detail-row"><span class="k">年齡</span><span class="v">${r.age}</span></div>
       <div class="detail-row"><span class="k">聯絡手機</span><span class="v">${r.phone}</span></div>
@@ -1008,7 +1066,7 @@ function renderLookup(){
       <label class="field-label" style="margin-top:10px;">兒童全名</label>
       <input type="text" id="lk_name" placeholder="請輸入預約時填寫的兒童全名" value="${lk.name}">
       <label class="field-label">兒童生日</label>
-      <input type="date" id="lk_birth" max="${todayStr()}" value="${lk.birth}">
+      ${rocDateInput('lk_birth', lk.birth)}
       <button class="btn btn-primary" id="lookupSearchBtn">查詢預約</button>
       <button class="btn btn-ghost" id="backToBookBtn">‹ 返回預約首頁</button>
     </div>
@@ -1177,7 +1235,7 @@ function renderAdmin(){
       <label class="field-label" style="margin-top:0;">兒童全名</label>
       <input type="text" id="hs_name" placeholder="請輸入兒童全名" value="${hs.name}">
       <label class="field-label">兒童生日</label>
-      <input type="date" id="hs_birth" max="${today}" value="${hs.birth}">
+      ${rocDateInput('hs_birth', hs.birth)}
       <button class="btn btn-primary" id="historySearchBtn">查詢</button>
     </div>
     ${hs.searched ? `<div style="font-weight:800; font-size:14px; margin:14px 4px 10px;">查詢結果（共 ${hs.results.length} 筆）</div>${historyResultsHtml}` : ''}
@@ -1288,6 +1346,7 @@ function render(){
     html += renderAdminLogin();
   }
   root.innerHTML = html;
+  initRocDates();
   bindEvents();
 }
 
@@ -1510,7 +1569,7 @@ function bindEvents(){
           name:f.name, birth:f.birth, age, phone:f.phone, altPhone:f.altPhone||'', phoneNorm: normPhone(f.phone),
           issue: composeIssue(f), submittedAt:Date.now()
         });
-        state.bookingResult = { type:'waitlist', name:f.name, age, phone:f.phone, issue: composeIssue(f) };
+        state.bookingResult = { type:'waitlist', name:f.name, birth:f.birth, age, phone:f.phone, issue: composeIssue(f) };
         state.patientStep = 3;
         render();
       }catch(e){
@@ -1629,6 +1688,7 @@ function bindScreeningEvents(){
           issue:f.issue, submittedAt: Date.now(),
           screeningAnswers: { ...state.screeningAnswers }
         });
+        state.langResult = { name:f.name.trim(), birth:f.birth, phone:f.phone };
         goScreen('langConfirm');
       }catch(e){
         console.error(e);
