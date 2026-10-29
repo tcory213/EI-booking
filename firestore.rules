@@ -84,6 +84,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // LINE 提醒綁定：兒童（姓名+生日）對應的 LINE 使用者 ID。
+    // 只有 Cloud Functions（Admin SDK）能寫入；已登入管理員可讀取（後台顯示「已綁定」用）。
+    match /lineContacts/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // 舊版資料結構，全面關閉存取
     match /clinicData/{docId} {
       allow read, write: if false;

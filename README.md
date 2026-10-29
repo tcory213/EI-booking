@@ -277,3 +277,30 @@ GitHub repo，真正的存取控制是靠 `firestore.rules` 與 Cloud Functions
 的權限檢查。但 `functions/` 資料夾如果之後有任何第三方服務的 API 金鑰，
 建議改用 `firebase functions:secrets:set` 設定，不要直接寫進程式碼或
 commit 上 GitHub。
+
+---
+
+## 🔔 LINE 預約提醒綁定（新增）
+
+家長預約成功後，畫面會顯示「一鍵綁定 LINE 提醒」按鈕（開啟 LINE 官方帳號，預先填好「綁定 XXXXXX」，按傳送即完成）。
+AI Reply 後台收到後，呼叫本專案的 `linkLineByCode`，把 LINE 使用者 ID 記進 `lineContacts`（以「姓名+生日」為鍵，同一位兒童之後再預約不用重新綁定）。
+每天早上 10:00 由 AI Reply 呼叫 `getTomorrowReminders` 取得名單並推播。
+
+新增的 3 支函式（`linkLineByCode`、`unlinkLine`、`getTomorrowReminders`）只接受帶有共用密鑰的呼叫。`getTomorrowReminders`、`unlinkLine` 的回傳不含姓名、生日、電話；`linkLineByCode` 綁定成功時會回傳姓名與生日（見下方說明）。
+
+### 部署（只需做一次的設定）
+1. 產生一組長隨機字串當共用密鑰（兩個專案要設成「同一組」），在本專案執行：
+   `firebase functions:secrets:set BOOKING_LINK_SECRET`
+2. 部署：`firebase deploy --only hosting,firestore:rules,functions`
+   （一定要含 `firestore:rules`，後台才讀得到 `lineContacts`）
+
+### 官方帳號 ID 變更
+`public/index.html` 最上方的 `LINE_OA_BASIC_ID = "@719kid"`。專屬 ID 之後若改回隨機 ID，只要改這一行再 `firebase deploy --only hosting`。
+
+### 注意
+- 綁定碼只存在於該筆預約（僅後台管理員可讀），`lookupMyBookings` 不會回傳給家長。
+- **補綁定**：家長可在「查詢／取消預約」頁，對某筆預約按「綁定 LINE 提醒」，輸入預約時填寫的聯絡手機核對通過後，由 `requestLinkCode` 產生新的綁定碼（舊碼失效，每筆預約最多重新取得 5 次）。
+- 綁定碼有效到預約當天，同一組最多 2 個 LINE（例如爸爸、媽媽）可綁定。
+- `lineContacts` 內存有 LINE 使用者 ID，屬個資，請納入保留期限規劃。
+
+- `linkLineByCode` 綁定成功時，除了預約日期與時間，也會回傳孩童姓名與生日（民國年七碼），供 AI Reply 後台建立客戶資料。回傳資料仍只給帶有共用密鑰的 AI Reply 後台，不會出現在瀏覽器端。

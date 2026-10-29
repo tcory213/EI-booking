@@ -328,6 +328,15 @@ firebase.initializeApp(firebaseConfig);
 /* 請至 Firebase 主控台 > App Check > 註冊你的網頁應用程式 (reCAPTCHA Enterprise，
    舊版 reCAPTCHA v3 已被 Google 標示為淘汰，新註冊一律使用 Enterprise)，
    取得 Site Key 後貼在這裡。設定好前，App Check 只會記錄不會擋任何請求。 */
+// 綁定 LINE 提醒用的官方帳號基本 ID（含 @）。
+// ⚠️ 專屬 ID 預計一年後不續購、可能變回隨機 ID，屆時只要改這一行（改成新的基本 ID）再重新部署即可。
+const LINE_OA_BASIC_ID = "@719kid";
+const LINK_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // 排除容易看錯的 I、L、O、0、1
+function genLinkCode(){
+  const arr = new Uint32Array(6);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, n => LINK_CODE_ALPHABET[n % LINK_CODE_ALPHABET.length]).join('');
+}
 const RECAPTCHA_ENTERPRISE_SITE_KEY = "6LfnWaYtAAAAADCiifn0RGLyNAoGtLn--eb6dcp0";
 if (RECAPTCHA_ENTERPRISE_SITE_KEY && RECAPTCHA_ENTERPRISE_SITE_KEY.indexOf('REPLACE_WITH') !== 0) {
   firebase.appCheck().activate(
@@ -345,6 +354,7 @@ const fx = firebase.functions();
 let slots = [];       // 公開資料：時段列表 (date/time/note/status/source)，不含任何病患個資
 let waitlist = [];    // 私密資料：職能候補名單，僅後台登入後才會載入
 let languageWaitlist = []; // 私密資料：語言候補名單，僅後台登入後才會載入
+let lineContactKeys = new Set(); // 已綁定 LINE 提醒的兒童（姓名|生日），僅後台使用
 let cancelledOcc = [];   // 已被後台取消的「固定時段」單次紀錄 (格式: "YYYY-MM-DD|HH:MM")，僅後台使用
 let auditLogs = [];   // 稽核紀錄，僅後台登入後才會載入
 let adminLoading = false; // 後台資料是否正在載入中
@@ -355,6 +365,10 @@ const AUDIT_ACTION_LABELS = {
   bookSlot: '家長預約時段',
   submitWaitlist: '送出候補登記',
   lookupMyBookings: '家長查詢預約',
+  requestLinkCode: '家長補綁定 LINE 提醒',
+  linkLineByCode: 'LINE 綁定（AI Reply 呼叫）',
+  unlinkLine: 'LINE 解除綁定（AI Reply 呼叫）',
+  getTomorrowReminders: '取得明日提醒名單（AI Reply 呼叫）',
   cancelMyBooking: '家長取消預約',
   adminGetDashboardData: '後台讀取資料',
   adminAddSlot: '後台新增時段',
@@ -394,7 +408,7 @@ let state = {
   adminShowPast: false,   // 時段管理分頁：是否正在瀏覽過去時段
   historySearch: { name:'', birth:'', results:[], searched:false }, // 後台依姓名+生日查詢歷史紀錄
   newSlot: { date:'', time:'', note:'' },
-  lookup: { name:'', birth:'', results:[], waitlistResults:[], languageWaitlistResults:[], searched:false },
+  lookup: { name:'', birth:'', results:[], waitlistResults:[], languageWaitlistResults:[], searched:false, linkCodes:{} },
 };
 
 /* ============ HELPERS ============ */
@@ -616,13 +630,17 @@ async function handleAuthExpired(){
 // 取回時段（含病患資料）、候補名單、固定時段停開清單，並在前端把資料 join 起來。
 async function loadAdminDashboard(){
   try{
-    const [slotsSnap, waitSnap, langWaitSnap, tplSnap, bookSnap] = await Promise.all([
+    const [slotsSnap, waitSnap, langWaitSnap, tplSnap, bookSnap, contactSnap] = await Promise.all([
       db.collection('slots').get(),
       db.collection('waitlist').get(),
       db.collection('languageWaitlist').get(),
       db.collection('templateMeta').doc('cancelledOcc').get(),
       db.collection('bookings').where('status','==','active').get(),
+      db.collection('lineContacts').get(),
     ]);
+    lineContactKeys = new Set(contactSnap.docs
+      .filter(d => Array.isArray(d.data().lineUsers) && d.data().lineUsers.length > 0)
+      .map(d => `${d.data().name}|${d.data().birth}`));
     const bookingBySlot = {};
     bookSnap.docs.forEach(d=>{
       const b = d.data();
@@ -968,6 +986,22 @@ function renderStep2(){
   return `<div class="content">${renderSummaryChip()}${body}</div>`;
 }
 
+/* ============ LINE 提醒綁定卡片 ============ */
+function renderLineLinkCard(code){
+  const href = 'https://line.me/R/oaMessage/' + LINE_OA_BASIC_ID + '/?' + encodeURIComponent('綁定 ' + code);
+  return `<div class="card" style="margin-top:16px;">
+    <div style="font-weight:800; font-size:15px; margin-bottom:6px;">🔔 想收到預約前一天的 LINE 提醒嗎？</div>
+    <div style="font-size:13px; line-height:1.7; color:#555;">
+      點下方按鈕會開啟本院 LINE 官方帳號，請幫我按<b>加入好友</b>。<br>加入好友後會自動在輸入欄預填好綁定密碼，⚠️<b>請幫我按【傳送】以完成綁定</b>。預約前一天早上 10:00 會收到提醒。
+    </div>
+    <a class="btn btn-primary" style="display:block; text-align:center; text-decoration:none; margin-top:12px;" href="${href}" target="_blank" rel="noopener">一鍵綁定 LINE 提醒</a>
+    <div style="font-size:12px; color:#777; margin-top:10px; line-height:1.7;">
+      若按鈕沒有反應，請手動在本院 LINE 官方帳號傳送：<b>綁定 ${esc(code)}</b><br>
+      請於預約日前完成綁定（若沒綁到，可從「查詢／取消預約」頁重新取得）。若不想再收到提醒，可在 LINE 傳送「取消提醒」。
+    </div>
+  </div>`;
+}
+
 /* ============ RENDER: PATIENT STEP 3 (confirmation) ============ */
 function renderStep3(){
   const r = state.bookingResult;
@@ -997,6 +1031,7 @@ function renderStep3(){
     ${r.note?`<div class="detail-row"><span class="k">備註</span><span class="v">${r.note}</span></div>`:''}
     <button class="btn btn-secondary" id="restartBtn">返回首頁</button>
   </div>
+  ${r.linkCode ? renderLineLinkCard(r.linkCode) : ''}
   <div style="margin-top:16px;">${renderNoticeCard()}</div>
   </div>`;
 }
@@ -1024,7 +1059,9 @@ function renderLookup(){
             </div>
             <div class="note" style="margin-top:4px;">兒童姓名：<b style="color:var(--ink);">${b.name}</b>（${b.age||''}）</div>
             ${b.note ? `<div class="note">備註：${b.note}</div>` : ''}
+            ${(lk.linkCodes && lk.linkCodes[b.id]) ? renderLineLinkCard(lk.linkCodes[b.id]) : ''}
             <div class="row-actions">
+              ${(lk.linkCodes && lk.linkCodes[b.id]) ? '' : `<button class="btn btn-secondary btn-small" data-link-line="${b.id}">🔔 綁定 LINE 提醒</button>`}
               ${cancellable
                 ? `<button class="btn btn-danger btn-small" data-cancel-own="${b.id}">取消此預約</button>`
                 : `<span style="font-size:12px; color:var(--ink-faint);">已超過線上取消時限，如需異動請致電本院</span>`}
@@ -1298,6 +1335,7 @@ function renderSlotRow(s){
       <div><b>生日：</b>${b.birth}</div>
       <div><b>電話：</b>${b.phone}${b.altPhone ? `（備用：${b.altPhone}）` : ''}</div>
       <div><b>主要問題：</b>${b.issue}</div>
+      ${lineContactKeys.has(`${String(b.name||'').trim()}|${b.birth}`) ? '<div style="margin-top:4px;">🔔 已綁定 LINE 提醒</div>' : ''}
       ${b.noShow ? '<div style="color:var(--danger); font-weight:700; margin-top:4px;">⚠️ 已標記爽約</div>' : ''}
     </div>
     <div class="row-actions">
@@ -1521,6 +1559,7 @@ function bindEvents(){
         const age = calcAge(f.birth);
         const slotRef = db.collection('slots').doc(slot.id);
         const bookingRef = db.collection('bookings').doc();
+        const linkCode = genLinkCode();
         const result = await db.runTransaction(async (tx)=>{
           const slotDoc = await tx.get(slotRef);
           if(!slotDoc.exists || slotDoc.data().status !== 'open'){
@@ -1533,12 +1572,13 @@ function bindEvents(){
             phoneNorm: normPhone(f.phone), issue: composeIssue(f),
             status:'active', bookedAt: Date.now(), noShow:false,
             date: s.date, time: s.time, note: s.note || '',
-            screeningAnswers: { ...state.screeningAnswers }
+            screeningAnswers: { ...state.screeningAnswers },
+            linkCode
           });
           return { date: s.date, time: s.time, note: s.note || '' };
         });
         slot.status = 'booked';
-        state.bookingResult = { type:'booking', name:f.name, age, phone:f.phone, issue: composeIssue(f), ...result };
+        state.bookingResult = { type:'booking', name:f.name, age, phone:f.phone, issue: composeIssue(f), linkCode, ...result };
         state.patientStep = 3;
         render();
       }catch(e){
@@ -1619,7 +1659,7 @@ function finishScreening(cur, filter){
 function bindScreeningEvents(){
   const gotoLookup = document.getElementById('gotoLookupBtn');
   if(gotoLookup) gotoLookup.onclick = ()=>{
-    state.lookup = { name:'', birth:'', results:[], waitlistResults:[], languageWaitlistResults:[], searched:false };
+    state.lookup = { name:'', birth:'', results:[], waitlistResults:[], languageWaitlistResults:[], searched:false, linkCodes:{} };
     state.view = 'lookup';
     render();
   };
@@ -1745,6 +1785,31 @@ function bindLookupEvents(){
     searchBtn.textContent = '查詢預約';
     render();
   };
+
+  document.querySelectorAll('[data-link-line]').forEach(el=>{
+    el.onclick = async ()=>{
+      const id = el.getAttribute('data-link-line');
+      const lk = state.lookup;
+      const booking = lk.results.find(b=>b.id===id);
+      if(!booking) return;
+      const phone = prompt('為確認是預約本人，請輸入「預約時填寫的聯絡手機」：');
+      if(!phone) return;
+      el.disabled = true;
+      try{
+        const res = await fx.httpsCallable('requestLinkCode')({ bookingId:id, name:booking.name, birth:booking.birth, phone });
+        lk.linkCodes = lk.linkCodes || {};
+        lk.linkCodes[id] = res.data.linkCode;
+        render();
+      }catch(e){
+        console.error(e);
+        const code = e && e.code ? String(e.code) : '';
+        if(code.includes('resource-exhausted')) alert('重新取得綁定碼的次數已達上限，請來電由專人協助。');
+        else if(code.includes('not-found')) alert('核對失敗，請確認輸入的是「預約時填寫的聯絡手機」。');
+        else showToast('取得綁定碼失敗，請稍後重試');
+        el.disabled = false;
+      }
+    };
+  });
 
   document.querySelectorAll('[data-cancel-own]').forEach(el=>{
     el.onclick = async ()=>{
