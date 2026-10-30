@@ -380,16 +380,16 @@ const AUDIT_ACTION_LABELS = {
 };
 
 // 預設固定門診／評估時段樣板：dow 依 JS 慣例 0=週日...6=週六
-// 週二(2) 09:20 / 10:00 / 10:40，週三(3) 20:00，週五(5) 17:50 / 18:50
+// 週二(2) 09:00 / 10:00 / 10:40，週三(3) 20:00，週五(5) 17:50 / 18:50
 const SLOT_TEMPLATE = [
-  { dow:2, time:'09:20' },
+  { dow:2, time:'09:00' },
   { dow:2, time:'10:00' },
   { dow:2, time:'10:40' },
   { dow:3, time:'20:00' },
   { dow:5, time:'17:50' },
   { dow:5, time:'18:50' },
 ];
-const TEMPLATE_LABEL = '週二 09:20、10:00、10:40｜週三 20:00｜週五 17:50、18:50';
+const TEMPLATE_LABEL = '週二 09:00、10:00、10:40｜週三 20:00｜週五 17:50、18:50';
 
 let state = {
   view: 'screening',      // screening | patient | admin | lookup

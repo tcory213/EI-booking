@@ -2,6 +2,11 @@
 
 > 以「新到舊」排列。日期為台灣時間。
 
+## 2026-10-30 — 週二第一個固定時段 09:20 改為 09:00
+- 固定時段樣板：週二 `09:20` → `09:00`（`public/index.html` 的 `SLOT_TEMPLATE`／`TEMPLATE_LABEL`、`functions/index.js` 的 `SLOT_TEMPLATE`、README）。
+- 已建立的未來週二 09:20 時段、以及 `templateMeta/cancelledOcc` 內的 `日期|09:20` 紀錄，需用一次性腳本改成 09:00（腳本會先確認這些時段都沒有人預約才執行）。過去的歷史時段與預約維持 09:20 不動。
+- 部署：`git push`（前端）＋ `firebase deploy --only functions`（排程樣板）。
+
 ## 2026-10-29 — 綁定成功後回傳基本資料給 AI Reply 後台
 - `public/index.html`：LINE 綁定卡片說明文字改為「請幫我按加入好友。加入好友後會自動在輸入欄預填好綁定密碼，⚠️請幫我按【傳送】以完成綁定」。
 - `functions/index.js`：`linkLineByCode` 綁定成功時，回應多帶 `name`（孩童姓名）與 `birth`（民國年七碼 `YYYMMDD`，例如 `0760213`，由新函式 `toBirth7` 從西元 `YYYY-MM-DD` 轉換），讓 AI Reply 後台直接建立「姓名＋生日＋LINE ID」客戶資料。

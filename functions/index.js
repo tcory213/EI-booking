@@ -148,7 +148,7 @@ exports.lookupMyBookings = functions.https.onCall(async (data, context) => {
  * ============================================================ */
 
 const SLOT_TEMPLATE = [
-  { dow: 2, time: '09:20' },
+  { dow: 2, time: '09:00' },
   { dow: 2, time: '10:00' },
   { dow: 2, time: '10:40' },
   { dow: 3, time: '20:00' },
