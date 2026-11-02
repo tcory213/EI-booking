@@ -156,12 +156,12 @@ const SLOT_TEMPLATE = [
   { dow: 5, time: '18:50' },
 ];
 
-// 計算「開放到第幾天後」：以最近一次的週二為錨點，開放到「四週後的週二」為止。
-// 例如今天剛好是週二，開放到 28 天後（下下下週二）；如果是週三，錨點回推一天到昨天的週二，開放到 27 天後，以此類推。
+// 計算「開放到第幾天後」：以最近一次的週二為錨點，開放到「六週後的週二」為止。
+// 例如今天剛好是週二，開放到 42 天後（六週後的週二）；如果是週三，錨點回推一天到昨天的週二，開放到 41 天後，以此類推。
 function maxDaysAheadTW(){
   const todayDow = new Date(todayStrTW() + 'T12:00:00Z').getUTCDay();
   const daysSinceTuesday = (todayDow - 2 + 7) % 7;
-  return 28 - daysSinceTuesday;
+  return 42 - daysSinceTuesday;
 }
 
 async function createMissingTemplateSlots(){

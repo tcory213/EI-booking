@@ -408,6 +408,7 @@ let state = {
   adminShowPast: false,   // 時段管理分頁：是否正在瀏覽過去時段
   historySearch: { name:'', birth:'', results:[], searched:false }, // 後台依姓名+生日查詢歷史紀錄
   newSlot: { date:'', time:'', note:'' },
+  closeDate: '', // 後台「預先停開固定時段」目前選的日期
   lookup: { name:'', birth:'', results:[], waitlistResults:[], languageWaitlistResults:[], searched:false, linkCodes:{} },
 };
 
@@ -420,13 +421,13 @@ function toLocalISODate(d){
   return `${y}-${m}-${day}`;
 }
 function todayStr(){ return toLocalISODate(new Date()); }
-// 以最近一次的週二為錨點，開放到「四週後的週二」為止（跟後端 dailySlotRefresh 邏輯一致）
+// 以最近一次的週二為錨點，開放到「六週後的週二」為止（跟後端 dailySlotRefresh 邏輯一致）
 function maxDateStr(){
   const now = new Date();
   const dow = now.getDay(); // 0=週日...2=週二...
   const daysSinceTuesday = (dow - 2 + 7) % 7;
   const d = new Date(now);
-  d.setDate(d.getDate() - daysSinceTuesday + 28);
+  d.setDate(d.getDate() - daysSinceTuesday + 42);
   return toLocalISODate(d);
 }
 function minBookableDateStr(){ const d=new Date(); d.setDate(d.getDate()+2); return toLocalISODate(d); }
@@ -712,7 +713,7 @@ function renderNoticeCard(){
       <h3>📌 預約評估注意事項</h3>
       <div class="notice-item">
         <div class="notice-heading">1｜預約時段開放說明</div>
-        <div class="notice-sub">系統將於每週二、五開放<b>未來四週內</b>的時段。若查詢時顯示「無可預約時段」，表示目前已額滿，請於之後的每週二、五再行預約。</div>
+        <div class="notice-sub">系統將於每週二、五開放<b>未來六週內</b>的時段。若查詢時顯示「無可預約時段」，表示目前已額滿，請於之後的每週二、五再行預約。</div>
         <div class="notice-sub">謝謝您的耐心與配合 ❤️</div>
       </div>
       <div class="notice-item">
@@ -1150,8 +1151,28 @@ function renderAdmin(){
     const today2 = todayStr(), maxD2 = maxDateStr();
     const activeCancelled = cancelledOcc.filter(k=>{
       const d = k.split('|')[0];
-      return d>=today2 && d<=maxD2;
+      return d>=today2; // 不設上限：很久以後預先停開的也要看得到、能恢復
     }).sort();
+    const cd = state.closeDate;
+    let closePanelRows = '';
+    if(cd){
+      const cdow = new Date(cd+'T12:00:00').getDay();
+      const ctimes = SLOT_TEMPLATE.filter(t=>t.dow===cdow).map(t=>t.time);
+      if(ctimes.length===0){
+        closePanelRows = `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:10px;">${fmtDateFull(cd)}沒有固定時段（固定時段只在週二、週三、週五）。</div>`;
+      } else {
+        const allClosed = ctimes.every(t=>cancelledOcc.includes(cd+'|'+t));
+        closePanelRows = `<div style="margin-top:10px;">` + ctimes.map(t=>{
+          const k = cd+'|'+t;
+          const closed = cancelledOcc.includes(k);
+          return `<div class="waitlist-row" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>${fmtDateFull(cd)}　${t}${closed ? '　<b style="color:var(--danger);">已停開</b>' : ''}</span>
+            ${closed ? `<button class="btn btn-secondary btn-small" data-restore-occ="${k}">恢復開放</button>`
+                     : `<button class="btn btn-danger btn-small" data-close-occ="${k}">停開</button>`}
+          </div>`;
+        }).join('') + (allClosed ? '' : `<button class="btn btn-danger" id="closeDayBtn" style="margin-top:10px;">整天停開（${ctimes.length} 個時段）</button>`) + `</div>`;
+      }
+    }
     const showPast = !!state.adminShowPast;
     const listSlots = showPast
       ? slots.filter(s=>s.date<today).sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : b.date.localeCompare(a.date))
@@ -1160,10 +1181,16 @@ function renderAdmin(){
     <div class="notice-card">
       <h3>📅 固定門診／評估時段</h3>
       <div style="font-size:13px; line-height:1.7;">${TEMPLATE_LABEL}</div>
-      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週二、五凌晨會自動補齊上述固定時段（至未來四週內），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">系統於每週二、五凌晨會自動補齊上述固定時段（至未來六週內），不需要登入後台也會自動進行。如遇休診可於下方時段列表刪除該次，或於下方手動加開其他時段。</div>
       <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">會清除「尚未被預約」的固定時段後依上方樣板重新產生，已被預約的時段與手動加開的時段不會受影響。</div>
     </div>
     ${!showPast ? `
+    <div class="card">
+      <label class="field-label" style="margin-top:0;">預先停開固定時段（可選任何未來日期）</label>
+      <input type="date" id="cl_date" min="${today}" value="${state.closeDate||''}">
+      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:6px; line-height:1.6;">適用於已知的休診日（例如幾個月後的連假）。停開後系統日後自動補時段時會略過；若該時段已經開出且<b>尚無人預約</b>，會一併刪除。已有人預約的時段不會被動到。</div>
+      ${closePanelRows}
+    </div>
     <div class="card">
       <label class="field-label" style="margin-top:0;">手動加開其他時段</label>
       <div style="display:flex; gap:8px;">
@@ -1173,7 +1200,7 @@ function renderAdmin(){
       <label class="field-label">備註（選填）</label>
       <input type="text" id="ns_note" placeholder="例如：限初評 / 醫師X門診" value="${state.newSlot.note}">
       <button class="btn btn-primary" id="addSlotBtn">新增時段</button>
-      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來四週內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
+      <div style="font-size:11.5px; color:var(--ink-faint); margin-top:8px;">預設僅開放「兩天後～未來六週內」（${minBookableDateStr()} ～ ${maxDateStr()}）的時段供家長預約。</div>
     </div>` : ''}
     <div style="display:flex; justify-content:space-between; align-items:center; margin:4px 4px 10px;">
       <div style="font-weight:800; font-size:14px;">${showPast ? '過去時段' : '時段列表'}（共 ${listSlots.length} 筆）</div>
@@ -1979,6 +2006,64 @@ function bindAdminEvents(){
       }
     };
 
+    // ---- 預先停開固定時段 ----
+    async function setOccCancelled(key){
+      const [dateStr, timeStr] = key.split('|');
+      const ex = slots.find(s=>s.date===dateStr && s.time===timeStr && s.source==='template');
+      if(ex){
+        const cur = await db.collection('slots').doc(ex.id).get();
+        if(cur.exists && cur.data().status !== 'open') return 'booked';
+        if(cur.exists) await db.collection('slots').doc(ex.id).delete();
+        slots = slots.filter(s=>s.id!==ex.id);
+      }
+      const metaRef = db.collection('templateMeta').doc('cancelledOcc');
+      await db.runTransaction(async (tx)=>{
+        const metaDoc = await tx.get(metaRef);
+        const list = (metaDoc.exists && metaDoc.data().list) ? metaDoc.data().list : [];
+        if(!list.includes(key)){ list.push(key); tx.set(metaRef, { list }); }
+      });
+      if(!cancelledOcc.includes(key)) cancelledOcc.push(key);
+      return 'ok';
+    }
+    const clDate = document.getElementById('cl_date');
+    if(clDate) clDate.addEventListener('change', e=>{ state.closeDate = e.target.value; render(); });
+    document.querySelectorAll('[data-close-occ]').forEach(el=>{
+      el.onclick = async ()=>{
+        el.disabled = true;
+        try{
+          const r = await setOccCancelled(el.getAttribute('data-close-occ'));
+          showToast(r==='booked' ? '此時段已有人預約，未停開；請先處理該預約' : '已停開此時段');
+          render();
+        }catch(e){
+          console.error(e);
+          if(isAuthError(e)){ await handleAuthExpired(); return; }
+          showToast('操作失敗，請重試'); el.disabled = false;
+        }
+      };
+    });
+    const closeDayBtn = document.getElementById('closeDayBtn');
+    if(closeDayBtn) closeDayBtn.onclick = async ()=>{
+      const cd = state.closeDate;
+      if(!cd) return;
+      if(!confirm('確定要將 ' + fmtDateFull(cd) + ' 的固定時段全部停開嗎？')) return;
+      closeDayBtn.disabled = true;
+      try{
+        const dow = new Date(cd+'T12:00:00').getDay();
+        let skipped = 0;
+        for(const t of SLOT_TEMPLATE.filter(x=>x.dow===dow)){
+          const k = cd+'|'+t.time;
+          if(cancelledOcc.includes(k)) continue;
+          if(await setOccCancelled(k) === 'booked') skipped++;
+        }
+        showToast(skipped ? ('完成；有 ' + skipped + ' 個時段已有人預約，未停開') : '已整天停開');
+        render();
+      }catch(e){
+        console.error(e);
+        if(isAuthError(e)){ await handleAuthExpired(); return; }
+        showToast('操作失敗，請重試'); closeDayBtn.disabled = false;
+      }
+    };
+
     document.querySelectorAll('[data-delete-slot]').forEach(el=>{
       el.onclick = async ()=>{
         const id = el.getAttribute('data-delete-slot');
@@ -2079,7 +2164,7 @@ function bindAdminEvents(){
           // 若日期仍在未來範圍內、且目前還沒有對應時段，直接補建這一筆，不用等隔天的每日自動排程
           const today = todayStr();
           const alreadyExists = slots.some(s=>s.date===dateStr && s.time===timeStr);
-          if(dateStr >= today && !alreadyExists){
+          if(dateStr >= today && dateStr <= maxDateStr() && !alreadyExists){
             const data = { date: dateStr, time: timeStr, note:'', status:'open', source:'template' };
             const ref = await db.collection('slots').add(data);
             slots.push({ id: ref.id, ...data });
